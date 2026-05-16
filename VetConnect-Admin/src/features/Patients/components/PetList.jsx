@@ -200,12 +200,6 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
                 }
               }}>
                 
-                {hasAllergies && (
-                  <Box sx={{ bgcolor: COLORS.kpiRedBg, color: COLORS.danger, py: 0.5, px: 3, display: 'flex', alignItems: 'center', gap: 1, borderBottom: `1px solid ${COLORS.kpiRedBorder}` }}>
-                    <WarningAmberIcon fontSize="small" />
-                    <Typography variant="caption" sx={{ fontFamily: FONT, ...TYPE.label, letterSpacing: '0.05em' }}>Allergy: {resolvedAllergies}</Typography>
-                  </Box>
-                )}
 
                 <Box sx={{ p: 3, pb: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -249,6 +243,13 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
                           <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS.accent, flexShrink: 0 }} />
                           Microchip: {pet.microchip || 'N/A'}
                         </Typography>
+
+                        {hasAllergies && (
+                          <Typography variant="caption" sx={{ fontFamily: FONT, color: COLORS.danger, fontWeight: 900, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: COLORS.danger, flexShrink: 0 }} />
+                            Allergies: {resolvedAllergies}
+                          </Typography>
+                        )}
                       </Stack>
                     </Box>
 
@@ -267,7 +268,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
                 <Box sx={{ p: 2, bgcolor: COLORS.surfaceAlt, borderTop: `1px solid ${COLORS.borderLight}`, mt: 'auto' }}>
                   <Stack direction="row" spacing={2} justifyContent="center">
                     <Button variant="contained" startIcon={<AssignmentIcon />} onClick={() => navigate(`/patients/${pet.id}`, { state: { pet } })} sx={{ bgcolor: COLORS.accent, fontFamily: FONT, color: 'white', fontWeight: 'bold', borderRadius: 0, boxShadow: 0, '&:hover': {bgcolor: COLORS.brand}, flex: 1 }}>
-                      View Chart
+                      View Records
                     </Button>
                     <Button variant="outlined" startIcon={<EventAvailableIcon />} onClick={() => onQuickBook(pet)} sx={{ fontFamily: FONT, color: COLORS.success, borderColor: COLORS.success, fontWeight: 'bold', borderRadius: 0, bgcolor: COLORS.cardBg, flex: 1 }}>
                       Book Visit
@@ -492,7 +493,7 @@ export default function PetList({ pets, onRegisterPet, onQuickBook, calculatePet
                     onClick={() => navigate(`/patients/${pet.id}`, { state: { pet } })}
                     sx={{ fontFamily: FONT, fontWeight: 'bold', color: COLORS.textMuted, borderColor: COLORS.border, fontSize: '0.72rem', ml: 'auto', flexShrink: 0 }}
                   >
-                    View Chart
+                    View Records
                   </Button>
                 </Card>
               </Grid>

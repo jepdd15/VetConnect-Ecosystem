@@ -178,13 +178,68 @@ export default function AddPetModal({ open, onClose, ownerName, newPetData, setN
                                 fontFamily: FONT,
                                 fontWeight: 900,
                                 bgcolor: 'white',
-                                '&.Mui-selected': { bgcolor: '#FF9100', color: COLORS.textPrimary, '&:hover': { bgcolor: '#FFAB40' } }
+                                color: COLORS.textPrimary,
+                                '&.Mui-selected': { 
+                                  color: 'white',
+                                  boxShadow: 'inset 4px 4px 0px rgba(0,0,0,0.1)',
+                                }
                               }
                             }}
                           >
-                            <ToggleButton value="Male">MALE</ToggleButton>
-                            <ToggleButton value="Female">FEMALE</ToggleButton>
+                            <ToggleButton 
+                              value="Male"
+                              sx={{ 
+                                '&.Mui-selected': { 
+                                  bgcolor: '#90CAF9!important', 
+                                  '&:hover': { bgcolor: '#42A5F5!important' } 
+                                } 
+                              }}
+                            >
+                              MALE
+                            </ToggleButton>
+                            <ToggleButton 
+                              value="Female"
+                              sx={{ 
+                                '&.Mui-selected': { 
+                                  bgcolor: '#F48FB1!important', 
+                                  '&:hover': { bgcolor: '#EC407A!important' } 
+                                } 
+                              }}
+                            >
+                              FEMALE
+                            </ToggleButton>
                           </ToggleButtonGroup>
+
+                          <Box sx={{ mt: 1.5, p: 1, border: `2px solid ${COLORS.textPrimary}`, display: 'inline-flex', alignItems: 'center', bgcolor: newPetData.isNeutered ? `${COLORS.success}22` : 'white', width: '100%' }}>
+                            <FormControlLabel
+                              control={<Switch size="small" checked={newPetData.isNeutered} onChange={(e)=>setNewPetData({...newPetData, isNeutered:e.target.checked})} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.success }, '& .MuiSwitch-switchBase.Mui-checked+.MuiSwitch-track': { bgcolor: COLORS.success } }} />}
+                              label={
+                                <Typography sx={{ fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', fontSize: '0.75rem', color: newPetData.isNeutered ? COLORS.success : COLORS.textPrimary }}>
+                                  {newPetData.gender === 'Female' ? 'SPAYED STATUS' : 'NEUTERED STATUS'}
+                                </Typography>
+                              }
+                              sx={{ ml: 0 }}
+                            />
+                          </Box>
+
+                          <Box sx={{ mt: 1.5 }}>
+                            <TextField 
+                              id="weight-input"
+                              name="lastWeight"
+                              label="BODY WEIGHT" fullWidth size="small" type="number"
+                              value={newPetData.lastWeight || ''} onChange={(e)=>setNewPetData({...newPetData, lastWeight: e.target.value})}
+                              InputProps={{ 
+                                endAdornment: <InputAdornment position="end"><Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.8rem', color: COLORS.textPrimary }}>KG</Typography></InputAdornment> 
+                              }}
+                              sx={{ 
+                                bgcolor: 'white', 
+                                '& .MuiOutlinedInput-root': { 
+                                  fontFamily: FONT, borderRadius: 0, fontWeight: 900,
+                                  '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
+                                } 
+                              }} 
+                            />
+                          </Box>
                         </Grid>
                       </Grid>
                     </Box>
@@ -330,59 +385,12 @@ export default function AddPetModal({ open, onClose, ownerName, newPetData, setN
                         borderLeft: 'none'
                       }}>
                         <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1 }}>
-                          03 VITALS
+                          03 MEDICAL ALLERGIES
                         </Typography>
                       </Box>
                       
                       <Grid container spacing={2}>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                          <TextField 
-                            id="weight-input"
-                            name="lastWeight"
-                            label="WEIGHT" fullWidth size="small" type="number"
-                            value={newPetData.lastWeight || ''} onChange={(e)=>setNewPetData({...newPetData, lastWeight: e.target.value})}
-                            InputProps={{ 
-                              endAdornment: <InputAdornment position="end"><Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.8rem', color: COLORS.textPrimary }}>KG</Typography></InputAdornment> 
-                            }}
-                            sx={{ 
-                              bgcolor: 'white', 
-                              '& .MuiOutlinedInput-root': { 
-                                fontFamily: FONT, borderRadius: 0, fontWeight: 900,
-                                '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
-                              } 
-                            }} 
-                          />
-                        </Grid>
-                        
-                        <Grid size={{ xs: 12, md: 6 }}>
-                          <TextField 
-                            id="microchip-number-input"
-                            name="microchip"
-                            label="MICROCHIP NUMBER" fullWidth size="small"
-                            value={newPetData.microchip} onChange={(e)=>setNewPetData({...newPetData, microchip:e.target.value})}
-                            sx={{ 
-                              bgcolor: 'white', 
-                              '& .MuiOutlinedInput-root': { 
-                                fontFamily: FONT, borderRadius: 0, fontWeight: 900,
-                                '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
-                              } 
-                            }} 
-                          />
-                        </Grid>
 
-                        <Grid size={{ xs: 12 }}>
-                          <Box sx={{ p: 1.5, border: `2px solid ${COLORS.textPrimary}`, display: 'inline-flex', alignItems: 'center', bgcolor: newPetData.isNeutered ? `${COLORS.success}22` : 'white', width: '100%' }}>
-                            <FormControlLabel
-                              control={<Switch checked={newPetData.isNeutered} onChange={(e)=>setNewPetData({...newPetData, isNeutered:e.target.checked})} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.success }, '& .MuiSwitch-switchBase.Mui-checked+.MuiSwitch-track': { bgcolor: COLORS.success } }} />}
-                              label={
-                                <Typography sx={{ fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', fontSize: '0.85rem', color: newPetData.isNeutered ? COLORS.success : COLORS.textPrimary }}>
-                                  {newPetData.gender === 'Female' ? 'SPAYED STATUS' : 'NEUTERED STATUS'}
-                                </Typography>
-                              }
-                              sx={{ ml: 0 }}
-                            />
-                          </Box>
-                        </Grid>
 
                         {/* DANGER ZONE: ALLERGIES */}
                         <Grid size={{ xs: 12 }}>

@@ -212,12 +212,81 @@ export default function EditPetModal({ open, onClose, pet }) {
 
             {/* Row 3: Sex */}
             <Grid size={{ xs: 12, md: 6 }}>
-              <TextField select label="Sex" fullWidth size="small"
-                value={form.gender} onChange={(e) => setForm({...form, gender: e.target.value})}
-                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }}>
-                <MenuItem value="Male">Male</MenuItem>
-                <MenuItem value="Female">Female</MenuItem>
-              </TextField>
+              <Typography variant="caption" sx={{ fontFamily: FONT, fontWeight: 900, color: COLORS.textPrimary, mb: 0.5, display: 'block' }}>SEX</Typography>
+              <ToggleButtonGroup
+                id="sex-select"
+                value={form.gender}
+                exclusive
+                fullWidth
+                size="small"
+                onChange={(e, v) => v && setForm({...form, gender: v})}
+                sx={{
+                  '& .MuiToggleButton-root': {
+                    borderRadius: 0,
+                    border: `2px solid ${COLORS.textPrimary}`,
+                    fontFamily: FONT,
+                    fontWeight: 900,
+                    bgcolor: 'white',
+                    color: COLORS.textPrimary,
+                    '&.Mui-selected': { 
+                      color: 'white',
+                      boxShadow: 'inset 4px 4px 0px rgba(0,0,0,0.1)',
+                    }
+                  }
+                }}
+              >
+                <ToggleButton 
+                  value="Male"
+                  sx={{ 
+                    '&.Mui-selected': { 
+                      bgcolor: '#90CAF9!important', 
+                      '&:hover': { bgcolor: '#42A5F5!important' } 
+                    } 
+                  }}
+                >
+                  MALE
+                </ToggleButton>
+                <ToggleButton 
+                  value="Female"
+                  sx={{ 
+                    '&.Mui-selected': { 
+                      bgcolor: '#F48FB1!important', 
+                      '&:hover': { bgcolor: '#EC407A!important' } 
+                    } 
+                  }}
+                >
+                  FEMALE
+                </ToggleButton>
+              </ToggleButtonGroup>
+
+              <Box sx={{ mt: 1.5, p: 1, border: `2px solid ${COLORS.textPrimary}`, display: 'inline-flex', alignItems: 'center', bgcolor: form.isNeutered ? `${COLORS.success}22` : 'white', width: '100%' }}>
+                <FormControlLabel
+                  control={<Switch size="small" checked={form.isNeutered} onChange={(e) => setForm({...form, isNeutered: e.target.checked})} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.success }, '& .MuiSwitch-switchBase.Mui-checked+.MuiSwitch-track': { bgcolor: COLORS.success } }} />}
+                  label={
+                    <Typography sx={{ fontFamily: FONT, fontWeight: 900, textTransform: 'uppercase', fontSize: '0.75rem', color: form.isNeutered ? COLORS.success : COLORS.textPrimary }}>
+                      {form.gender === 'Female' ? 'SPAYED STATUS' : 'NEUTERED STATUS'}
+                    </Typography>
+                  }
+                  sx={{ ml: 0 }}
+                />
+              </Box>
+
+              <TextField 
+                label="BODY WEIGHT" 
+                fullWidth size="small" type="number"
+                value={form.lastWeight} onChange={(e) => setForm({...form, lastWeight: e.target.value})}
+                InputProps={{ 
+                  endAdornment: <InputAdornment position="end"><Typography sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.8rem', color: COLORS.textPrimary }}>KG</Typography></InputAdornment> 
+                }}
+                sx={{ 
+                  mt: 1.5,
+                  bgcolor: COLORS.cardBg, 
+                  '& .MuiOutlinedInput-root': { 
+                    fontFamily: FONT, borderRadius: 0, fontWeight: 900,
+                    '& fieldset': { border: `2px solid ${COLORS.textPrimary}` }
+                  } 
+                }} 
+              />
             </Grid>
 
             {/* Row 3b: DOB 3-mode selector (Item 5) */}
@@ -269,18 +338,6 @@ export default function EditPetModal({ open, onClose, pet }) {
               </Box>
             </Grid>
 
-            {/* Row 4: Weight + Microchip */}
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField label="Last Recorded Weight" fullWidth size="small" type="number"
-                value={form.lastWeight} onChange={(e) => setForm({...form, lastWeight: e.target.value})}
-                InputProps={{ endAdornment: <InputAdornment position="end"><Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textMuted }}>kg</Typography></InputAdornment> }}
-                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField label="Microchip Number" fullWidth size="small"
-                value={form.microchip} onChange={(e) => setForm({...form, microchip: e.target.value})}
-                sx={{ bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-root': { fontFamily: FONT } }} />
-            </Grid>
 
             {/* Row 5: Allergy tag array (Item 6) */}
             <Grid size={{ xs: 12 }}>
@@ -358,13 +415,6 @@ export default function EditPetModal({ open, onClose, pet }) {
               </Box>
             </Grid>
 
-            {/* Row 6: Neutered toggle */}
-            <Grid size={{ xs: 12 }}>
-              <FormControlLabel
-                control={<Switch checked={form.isNeutered} onChange={(e) => setForm({...form, isNeutered: e.target.checked})} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.success }, '& .MuiSwitch-switchBase.Mui-checked+.MuiSwitch-track': { bgcolor: COLORS.success } }} />}
-                label={<Typography sx={{ fontFamily: FONT, fontWeight: 700, color: form.isNeutered ? COLORS.success : COLORS.textSecondary }}>{form.gender === 'Female' ? 'Spayed' : 'Neutered'}</Typography>}
-              />
-            </Grid>
           </Grid>
 
           {error && form.name.trim() && (

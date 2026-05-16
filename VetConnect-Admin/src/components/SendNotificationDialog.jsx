@@ -10,12 +10,13 @@ import SendIcon from '@mui/icons-material/Send';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
 import EmailIcon from '@mui/icons-material/Email';
+import SmsIcon from '@mui/icons-material/Sms';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
-import { resolvePushToken, getWorkerUrl, getCachedOwnerEmail } from '../utils/sendPushNotification';
+import { resolvePushToken, getWorkerUrl, getCachedOwnerEmail, getCachedOwnerPhone } from '../utils/sendPushNotification';
 import { buildEmailHtml } from '../utils/notificationTemplateConstants';
 import { useUser } from '../context/UserContext';
 
@@ -38,8 +39,16 @@ export default function SendNotificationDialog({
   // Channel Destinations (T4.122)
   const [pushToken, setPushToken] = useState(null);
   const [ownerEmail, setOwnerEmail] = useState(null);
+  const [ownerPhone, setOwnerPhone] = useState(null);
   const [sendPush, setSendPush] = useState(true);
   const [sendEmail, setSendEmail] = useState(true);
+  const [sendSms, setSendSms] = useState(false);
+
+  const cleanPhone = (num) => (num || '').replace(/\D/g, '');
+  const isSmsReady = (num) => {
+    const clean = cleanPhone(num);
+    return (clean.startsWith('09') || clean.startsWith('639')) && clean.length >= 10 && clean.length <= 13;
+  };
 
   const resolveDestinations = async () => {
     if (!ownerId) return;
@@ -52,9 +61,13 @@ export default function SendNotificationDialog({
       const email = getCachedOwnerEmail(ownerId);
       setOwnerEmail(email);
 
+      const phone = getCachedOwnerPhone(ownerId);
+      setOwnerPhone(phone);
+
       // Auto-toggle based on availability
       setSendPush(!!token);
       setSendEmail(!!email);
+      setSendSms(isSmsReady(phone));
     } catch (err) {
       console.error('[SendNotificationDialog] Resolve failed:', err);
     } finally {
@@ -79,7 +92,7 @@ export default function SendNotificationDialog({
 
   const handleSend = async () => {
     if (!title.trim() || !body.trim()) return;
-    if (!sendPush && !sendEmail) {
+    if (!sendPush && !sendEmail && !sendSms) {
       setSnack({ open: true, message: 'Please select at least one delivery channel.', severity: 'warning' });
       return;
     }
@@ -141,6 +154,27 @@ export default function SendNotificationDialog({
             ownerId, ownerName: recipientName || null, status: null, petName: petName || null,
             title: title.trim(), body: body.trim(), appointmentId: null, sentAt: Timestamp.now(),
             sentBy: profile?.fullName || 'Staff', channel: 'email', type: 'custom',
+          }).catch(() => {});
+        }
+      }
+
+      // Channel 3: SMS (T4.122 Unleashed)
+      if (sendSms && ownerPhone) {
+        const res = await fetch(baseEndpoint + '/sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to:      cleanPhone(ownerPhone),
+            message: body.trim(),
+          }),
+        });
+
+        if (res.ok) {
+          channelsSent.push('SMS');
+          addDoc(collection(db, 'notification_log'), {
+            ownerId, ownerName: recipientName || null, status: null, petName: petName || null,
+            title: title.trim(), body: body.trim(), appointmentId: null, sentAt: Timestamp.now(),
+            sentBy: profile?.fullName || 'Staff', channel: 'sms', type: 'custom',
           }).catch(() => {});
         }
       }
@@ -222,18 +256,33 @@ export default function SendNotificationDialog({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <PhoneIphoneIcon sx={{ fontSize: 16, color: pushToken ? COLORS.success : COLORS.textMuted }} />
                 <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: pushToken ? COLORS.textPrimary : COLORS.textMuted }}>
-                  Push: {pushToken ? 'READY' : 'UNAVAILABLE'}
+                  Push: {pushToken ? 'READY' : ''}
                 </Typography>
-                {pushToken ? <CheckCircleIcon sx={{ fontSize: 12, color: COLORS.success }} /> : <CancelIcon sx={{ fontSize: 12, color: COLORS.textMuted }} />}
+                <Typography sx={{ fontSize: '0.65rem', fontWeight: 1000, color: pushToken ? COLORS.success : COLORS.textMuted, bgcolor: pushToken ? '#E8F5E9' : '#F5F5F5', px: 0.6, py: 0.2, borderRadius: '4px' }}>
+                  {pushToken ? 'AVAILABLE' : 'UNAVAILABLE'}
+                </Typography>
               </Box>
 
               {/* Email Status */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <EmailIcon sx={{ fontSize: 16, color: ownerEmail ? COLORS.accent : COLORS.textMuted }} />
                 <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: ownerEmail ? COLORS.textPrimary : COLORS.textMuted }}>
-                  Email: {ownerEmail ? ownerEmail : 'UNAVAILABLE'}
+                  Email: {ownerEmail ? ownerEmail : ''}
                 </Typography>
-                {ownerEmail ? <CheckCircleIcon sx={{ fontSize: 12, color: COLORS.success }} /> : <CancelIcon sx={{ fontSize: 12, color: COLORS.textMuted }} />}
+                <Typography sx={{ fontSize: '0.65rem', fontWeight: 1000, color: ownerEmail ? COLORS.success : COLORS.textMuted, bgcolor: ownerEmail ? '#E8F5E9' : '#F5F5F5', px: 0.6, py: 0.2, borderRadius: '4px' }}>
+                  {ownerEmail ? 'AVAILABLE' : 'UNAVAILABLE'}
+                </Typography>
+              </Box>
+
+              {/* SMS Status */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <SmsIcon sx={{ fontSize: 16, color: isSmsReady(ownerPhone) ? COLORS.warning : COLORS.textMuted }} />
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: isSmsReady(ownerPhone) ? COLORS.textPrimary : COLORS.textMuted }}>
+                  SMS: {ownerPhone ? ownerPhone : ''}
+                </Typography>
+                <Typography sx={{ fontSize: '0.65rem', fontWeight: 1000, color: isSmsReady(ownerPhone) ? COLORS.success : COLORS.textMuted, bgcolor: isSmsReady(ownerPhone) ? '#E8F5E9' : '#F5F5F5', px: 0.6, py: 0.2, borderRadius: '4px' }}>
+                  {isSmsReady(ownerPhone) ? 'AVAILABLE' : 'UNAVAILABLE'}
+                </Typography>
               </Box>
             </Box>
 
@@ -248,6 +297,10 @@ export default function SendNotificationDialog({
               <FormControlLabel
                 control={<Checkbox size="small" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} disabled={!ownerEmail || sending} />}
                 label={<Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700 }}>Email Message</Typography>}
+              />
+              <FormControlLabel
+                control={<Checkbox size="small" checked={sendSms} onChange={(e) => setSendSms(e.target.checked)} disabled={!isSmsReady(ownerPhone) || sending} />}
+                label={<Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700 }}>SMS Message</Typography>}
               />
             </Box>
           </Box>
@@ -286,7 +339,7 @@ export default function SendNotificationDialog({
           <Button onClick={handleClose} disabled={sending} sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}>Cancel</Button>
           <Button
             onClick={handleSend} variant="contained"
-            disabled={!title.trim() || !body.trim() || sending}
+            disabled={!title.trim() || !body.trim() || sending || (!sendPush && !sendEmail && !sendSms)}
             startIcon={sending ? <CircularProgress size={16} color="inherit" /> : <SendIcon sx={{ fontSize: '16px !important' }} />}
             sx={{
               fontFamily: FONT, fontWeight: 700, fontSize: '0.82rem', textTransform: 'none',

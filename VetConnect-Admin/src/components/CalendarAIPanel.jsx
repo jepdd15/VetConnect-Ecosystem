@@ -1,23 +1,14 @@
-// CalendarAIPanel.jsx — AI Scheduling Assistant side panel for the Calendar page.
-//
-// Props are all flat (no internal Firestore coupling) — parent Calendar.jsx
-// owns all state and handlers. This component is pure presentation + scroll management.
-//
-// Sky Blue theme (COLORS.sky / kpiBlueBg) — distinguishes scheduling AI
-// from ClinicalAIPanel (purple / COLORS.grooming).
-
 import React, { useRef, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
   IconButton,
   Button,
-  Chip,
   CircularProgress,
-  InputBase,
+  TextField,
 } from '@mui/material';
 import CloseIcon        from '@mui/icons-material/Close';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import AutoAwesomeIcon   from '@mui/icons-material/AutoAwesome';
 import RestartAltIcon   from '@mui/icons-material/RestartAlt';
 import SendIcon         from '@mui/icons-material/Send';
 import ReplayIcon       from '@mui/icons-material/Replay';
@@ -30,9 +21,9 @@ import ReactMarkdown    from 'react-markdown';
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
 import { normalizeMarkdownTables } from '../utils/normalizeMarkdownTables';
 
-// ─── Quick-action chip definitions ───────────────────────────────────────────
+// ─── Quick-action definitions ───────────────────────────────────────────────
 
-const QUICK_CHIPS = [
+const QUICK_ACTIONS = [
   { type: 'briefing',          label: "Tomorrow's Briefing",  Icon: SummarizeIcon   },
   { type: 'find_slot',         label: 'Find a Slot',          Icon: SearchIcon      },
   { type: 'staff_availability', label: 'Staff Availability',  Icon: PeopleIcon      },
@@ -42,25 +33,6 @@ const QUICK_CHIPS = [
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-/**
- * CalendarAIPanel — AI Scheduling Assistant side panel.
- *
- * Integrated as a 380px flex column to the right of the calendar grid.
- * The panel collapses the calendar (not an overlay) so staff can see
- * schedule and AI output side-by-side.
- *
- * @prop {boolean}       loading           - LLM call in-flight
- * @prop {Array}         messages          - [{role:'user'|'assistant', content:string}]
- * @prop {string}        error             - Error message from LLM, or ''
- * @prop {string}        followUpInput     - Current text input value
- * @prop {function}      onSendMessage     - (text:string) => void
- * @prop {function}      onFollowUpChange  - (value:string) => void
- * @prop {function}      onReset           - () => void — clears conversation
- * @prop {function}      onRetry           - () => void — retries last failed call
- * @prop {function}      onClose           - () => void — closes the panel
- * @prop {function}      onChipClick       - (chipType:string) => void
- * @prop {string|null}   contextLabel      - "Niki · Grooming · 10:00 AM" or null
- */
 export default function CalendarAIPanel({
   loading,
   messages,
@@ -76,59 +48,56 @@ export default function CalendarAIPanel({
 }) {
   const chatEndRef = useRef(null);
 
-  // Auto-scroll to bottom whenever messages update or loading changes.
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, loading]);
 
-  // Stable markdown component map — prevents ReactMarkdown from re-mounting
-  // its tree on every keystroke in the input field.
   const markdownComponents = useMemo(() => ({
     h1: ({ children }) => (
-      <Typography sx={{ fontFamily: FONT, fontSize: '1rem', fontWeight: 900, color: COLORS.sky, mt: 1.5, mb: 0.5 }}>
+      <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', fontWeight: 900, color: COLORS.brand, mt: 1, mb: 0.5, textTransform: 'uppercase' }}>
         {children}
       </Typography>
     ),
     h2: ({ children }) => (
-      <Typography sx={{ fontFamily: FONT, fontSize: '0.9rem', fontWeight: 900, color: COLORS.sky, mt: 1.25, mb: 0.5 }}>
+      <Typography sx={{ fontFamily: FONT, fontSize: '0.88rem', fontWeight: 900, color: COLORS.brand, mt: 0.75, mb: 0.25 }}>
         {children}
       </Typography>
     ),
     h3: ({ children }) => (
-      <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.sky, mt: 1, mb: 0.25 }}>
+      <Typography sx={{ fontFamily: FONT, fontSize: '0.83rem', fontWeight: 800, color: COLORS.brand, mt: 0.5, mb: 0.25 }}>
         {children}
       </Typography>
     ),
     p: ({ children }) => (
-      <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, mb: 0.75 }}>
+      <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, mb: 0.5 }}>
         {children}
       </Typography>
     ),
     li: ({ children }) => (
-      <li style={{ fontSize: '0.8rem', marginBottom: '2px', lineHeight: 1.5 }}>
+      <li style={{ fontSize: '0.8rem', marginBottom: '2px', lineHeight: 1.5, color: COLORS.textPrimary }}>
         {children}
       </li>
     ),
-    strong: ({ children }) => <strong>{children}</strong>,
+    strong: ({ children }) => <strong style={{ fontWeight: 800, color: COLORS.brand }}>{children}</strong>,
     table: ({ children }) => (
-      <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: '8px', fontSize: '0.75rem' }}>
+      <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: '10px', fontSize: '0.75rem', border: `2px solid ${COLORS.brand}` }}>
         {children}
       </table>
     ),
     th: ({ children }) => (
-      <th style={{ border: `1px solid ${COLORS.kpiBlueBorder}`, padding: '4px 8px', fontWeight: 800, textAlign: 'left', borderRadius: 0, backgroundColor: 'rgba(58,190,249,0.06)' }}>
+      <th style={{ border: `1px solid ${COLORS.brand}`, padding: '4px 8px', fontWeight: 900, textAlign: 'left', backgroundColor: COLORS.panelBg, color: COLORS.brand }}>
         {children}
       </th>
     ),
     td: ({ children }) => (
-      <td style={{ border: `1px solid ${COLORS.kpiBlueBorder}`, padding: '4px 8px', borderRadius: 0 }}>
+      <td style={{ border: `1px solid ${COLORS.brand}`, padding: '4px 8px', color: COLORS.textPrimary }}>
         {children}
       </td>
     ),
     hr: () => (
-      <hr style={{ border: 'none', borderTop: `1px solid ${COLORS.kpiBlueBorder}`, margin: '8px 0' }} />
+      <hr style={{ border: 'none', borderTop: `2px solid ${COLORS.brand}`, margin: '8px 0' }} />
     ),
   }), []);
 
@@ -144,84 +113,87 @@ export default function CalendarAIPanel({
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      height: '100%', 
+      overflow: 'hidden',
+      borderLeft: `3px solid ${COLORS.brand}`,
+      boxShadow: `-8px 0 0 rgba(62, 39, 35, 0.15)`,
+    }}>
 
       {/* ── HEADER ── */}
       <Box sx={{
-        bgcolor: COLORS.sky,
-        px: 2,
-        py: 1.5,
+        bgcolor: COLORS.brand,
+        px: 2.5,
+        py: 2,
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
-        gap: 1,
-        borderBottom: `2px solid ${COLORS.skyHover}`,
+        gap: 1.5,
       }}>
-        <CalendarMonthIcon sx={{ color: '#FFF', fontSize: 22 }} />
+        <AutoAwesomeIcon sx={{ color: COLORS.cream, fontSize: 20 }} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography sx={{
             fontFamily: FONT,
-            ...TYPE.label,
-            color: '#FFF',
             fontWeight: 900,
+            fontSize: '0.9rem',
+            textTransform: 'uppercase',
             letterSpacing: 1.5,
-            fontSize: '0.65rem',
+            color: COLORS.cream,
           }}>
-            AI SCHEDULING ASSISTANT
+            AI Scheduling Assistant
           </Typography>
           {contextLabel && (
             <Typography sx={{
               fontFamily: FONT,
-              fontSize: '0.7rem',
-              fontWeight: 700,
-              color: 'rgba(255,255,255,0.85)',
+              fontSize: '0.65rem',
+              fontWeight: 800,
+              color: COLORS.cream,
               textTransform: 'uppercase',
               letterSpacing: 0.5,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
             }}>
               {contextLabel}
             </Typography>
           )}
         </Box>
 
-        {/* Reset button — visible when conversation has messages */}
-        {messages.length > 0 && (
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {messages.length > 0 && (
+            <IconButton
+              size="small"
+              onClick={onReset}
+              disabled={loading}
+              title="Reset conversation"
+              sx={{ color: COLORS.cream, '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
+            >
+              <RestartAltIcon fontSize="small" />
+            </IconButton>
+          )}
           <IconButton
             size="small"
-            onClick={onReset}
-            disabled={loading}
-            title="Clear conversation"
-            sx={{ color: '#FFF', opacity: 0.8, '&:hover': { opacity: 1 }, p: 0.5 }}
+            onClick={onClose}
+            title="Close"
+            sx={{ color: COLORS.cream, '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
           >
-            <RestartAltIcon sx={{ fontSize: 18 }} />
+            <CloseIcon fontSize="small" />
           </IconButton>
-        )}
-
-        {/* Close button */}
-        <IconButton
-          size="small"
-          onClick={onClose}
-          title="Close AI panel"
-          sx={{ color: '#FFF', opacity: 0.8, '&:hover': { opacity: 1 }, p: 0.5 }}
-        >
-          <CloseIcon sx={{ fontSize: 18 }} />
-        </IconButton>
+        </Box>
       </Box>
 
       {/* ── DISCLAIMER BAR ── */}
       <Box sx={{
-        bgcolor: COLORS.kpiBlueBg,
-        borderBottom: `1px solid ${COLORS.kpiBlueBorder}`,
-        px: 2,
-        py: 0.75,
+        bgcolor: COLORS.cream,
+        borderBottom: `2px solid ${COLORS.brand}`,
+        px: 2.5,
+        py: 1,
         flexShrink: 0,
       }}>
         <Typography sx={{
           fontFamily: FONT,
           fontSize: '0.65rem',
-          color: COLORS.skyHover,
+          color: COLORS.brand,
+          fontWeight: 700,
           fontStyle: 'italic',
           lineHeight: 1.4,
         }}>
@@ -229,90 +201,74 @@ export default function CalendarAIPanel({
         </Typography>
       </Box>
 
-      {/* ── QUICK ACTION CHIPS — always visible, above chat area ── */}
-      <Box sx={{
-        px: 1.5,
-        pt: 1.25,
-        pb: 1,
-        flexShrink: 0,
-        bgcolor: COLORS.surface,
-        borderBottom: `1px solid ${COLORS.kpiBlueBorder}`,
-      }}>
-        <Typography sx={{
-          fontFamily: FONT,
-          ...TYPE.label,
-          color: COLORS.textMuted,
-          mb: 0.75,
-          fontSize: '0.6rem',
-        }}>
-          QUICK ACTIONS
-        </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-          {QUICK_CHIPS.map(({ type, label, Icon }) => (
-            <Chip
-              key={type}
-              label={label}
-              size="small"
-              icon={<Icon sx={{ fontSize: '13px !important' }} />}
-              onClick={() => onChipClick(type)}
-              disabled={loading}
-              sx={{
-                fontFamily: FONT,
-                fontWeight: 900,
-                fontSize: '0.6rem',
-                borderRadius: 0,
-                bgcolor: COLORS.kpiBlueBg,
-                border: `1px solid ${COLORS.kpiBlueBorder}`,
-                color: COLORS.sky,
-                '& .MuiChip-icon': { color: COLORS.sky },
-                '&:hover': { bgcolor: `${COLORS.kpiBlueBorder}40` },
-                '&.Mui-disabled': { opacity: 0.4 },
-              }}
-            />
-          ))}
-        </Box>
-      </Box>
-
       {/* ── SCROLLABLE CHAT AREA ── */}
       <Box sx={{
         flex: 1,
         overflowY: 'auto',
-        p: 1.5,
+        p: 2.5,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+        bgcolor: COLORS.surfaceAlt,
         scrollbarWidth: 'thin',
-        '&::-webkit-scrollbar': { width: '4px' },
-        '&::-webkit-scrollbar-track': { background: 'transparent' },
-        '&::-webkit-scrollbar-thumb': { background: '#E0E0E0' },
-        '&::-webkit-scrollbar-thumb:hover': { background: COLORS.skyHover },
+        '&::-webkit-scrollbar': { width: 5 },
+        '&::-webkit-scrollbar-thumb': { bgcolor: COLORS.brand },
       }}>
 
-        {/* Empty state */}
-        {isEmpty && !loading && !error && (
-          <Box sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            py: 4,
-            opacity: 0.45,
-          }}>
-            <CalendarMonthIcon sx={{ fontSize: 48, color: COLORS.sky, mb: 1.5 }} />
-            <Typography sx={{
-              fontFamily: FONT,
-              fontSize: '0.8rem',
-              color: COLORS.textMuted,
-              textAlign: 'center',
-              lineHeight: 1.5,
-            }}>
-              Ask a question about your schedule, or click a quick action chip to get started.
-            </Typography>
+        {/* Empty state & Quick Actions */}
+        {isEmpty && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, pt: 1 }}>
+            <Box sx={{ textAlign: 'center', opacity: 0.6 }}>
+              <SummarizeIcon sx={{ fontSize: 48, color: COLORS.brand, opacity: 0.2, mb: 1.5 }} />
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.brand }}>
+                Explore the Clinic Schedule
+              </Typography>
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', mt: 0.5, color: COLORS.textSecondary }}>
+                Ask a specific question or use a quick action below.
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, fontSize: '0.6rem' }}>
+                SUGGESTED ANALYTICS
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+                {QUICK_ACTIONS.map(({ type, label, Icon }) => (
+                  <Button
+                    key={type}
+                    onClick={() => onChipClick(type)}
+                    disabled={loading}
+                    sx={{
+                      fontFamily: FONT, fontWeight: 800, fontSize: '0.72rem',
+                      color: COLORS.brand, bgcolor: COLORS.cardBg,
+                      border: `2px solid ${COLORS.brand}`,
+                      borderRadius: 0,
+                      textTransform: 'none',
+                      px: 2, py: 0.75,
+                      boxShadow: `3px 3px 0px ${COLORS.brand}`,
+                      transition: 'all 0.1s ease',
+                      '&:hover': {
+                        bgcolor: COLORS.panelBg,
+                        transform: 'translate(-1px, -1px)',
+                        boxShadow: `4px 4px 0px ${COLORS.brand}`,
+                      },
+                      '&.Mui-disabled': { opacity: 0.4 },
+                    }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </Box>
+            </Box>
           </Box>
         )}
 
-        {/* Initial loading indicator (no messages yet) */}
-        {loading && messages.length <= 1 && !error && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}>
-            <CircularProgress size={18} sx={{ color: COLORS.sky }} />
-            <Typography sx={{ fontSize: '0.8rem', color: COLORS.sky, fontWeight: 700, fontFamily: FONT }}>
-              Analyzing schedule...
+        {/* Initial loading indicator */}
+        {loading && messages.length === 0 && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>
+            <CircularProgress size={16} thickness={6} sx={{ color: COLORS.brand }} />
+            <Typography sx={{ fontSize: '0.75rem', color: COLORS.brand, fontWeight: 700, fontFamily: FONT, letterSpacing: '0.05em' }}>
+              ANALYZING SCHEDULE...
             </Typography>
           </Box>
         )}
@@ -321,155 +277,127 @@ export default function CalendarAIPanel({
         {messages.map((msg, idx) => (
           <Box
             key={idx}
-            sx={{
-              mb: 1.5,
-              p: 1.25,
-              borderRadius: 0,
-              bgcolor: msg.role === 'user' ? COLORS.panelBg : COLORS.cardBg,
-              borderLeft: msg.role === 'user'
-                ? `3px solid ${COLORS.brand}`
-                : `3px solid ${COLORS.sky}`,
-              border: msg.role === 'user'
-                ? `1px solid ${COLORS.borderLight}`
-                : `1px solid ${COLORS.kpiBlueBorder}`,
-              borderLeftWidth: '3px',
-            }}
+            sx={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '92%' }}
           >
             <Typography sx={{
-              ...TYPE.label,
-              color: msg.role === 'user' ? COLORS.brand : COLORS.sky,
-              fontWeight: 900,
-              fontSize: '0.55rem',
-              mb: 0.5,
+              fontFamily: FONT, fontSize: '0.6rem', fontWeight: 1000,
+              textTransform: 'uppercase', letterSpacing: '0.08em',
+              color: msg.role === 'user' ? COLORS.textMuted : COLORS.brand,
+              mb: 0.5, px: 0.5, textAlign: msg.role === 'user' ? 'right' : 'left'
             }}>
-              {msg.role === 'user' ? 'YOU' : 'AI ASSISTANT'}
+              {msg.role === 'user' ? 'Clinician' : 'AI Assistant'}
             </Typography>
-            {msg.role === 'assistant' ? (
-              <Box sx={{ fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.6, fontFamily: FONT }}>
-                <ReactMarkdown components={markdownComponents}>
-                  {normalizeMarkdownTables(msg.content)}
-                </ReactMarkdown>
-              </Box>
-            ) : (
-              <Typography sx={{ fontSize: '0.8rem', color: COLORS.textPrimary, lineHeight: 1.5, whiteSpace: 'pre-line', fontFamily: FONT }}>
-                {msg.content.length > 300 ? `${msg.content.substring(0, 300)}...` : msg.content}
-              </Typography>
-            )}
+
+            <Box sx={{
+              px: 2, py: 1.5,
+              bgcolor: msg.role === 'user' ? COLORS.panelBg : COLORS.cardBg,
+              border: `2px solid ${COLORS.brand}`,
+              borderRadius: 0,
+              boxShadow: msg.role === 'assistant' ? `4px 4px 0px ${COLORS.brand}` : 'none',
+            }}>
+              {msg.role === 'assistant' ? (
+                <Box sx={{ fontSize: '0.82rem', color: COLORS.textPrimary, lineHeight: 1.7, fontFamily: FONT }}>
+                  <ReactMarkdown components={markdownComponents}>
+                    {normalizeMarkdownTables(msg.content)}
+                  </ReactMarkdown>
+                </Box>
+              ) : (
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', color: COLORS.textPrimary, lineHeight: 1.7, fontWeight: 500 }}>
+                  {msg.content}
+                </Typography>
+              )}
+            </Box>
           </Box>
         ))}
 
-        {/* Follow-up loading indicator (messages already exist) */}
-        {loading && messages.length > 1 && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5, pl: 1 }}>
-            <CircularProgress size={12} sx={{ color: COLORS.sky }} />
-            <Typography sx={{ fontSize: '0.75rem', color: COLORS.sky, fontWeight: 700, fontFamily: FONT }}>
-              Thinking...
+        {/* Follow-up loading indicator */}
+        {loading && messages.length > 0 && (
+          <Box sx={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 1.5, px: 1, py: 1 }}>
+            <CircularProgress size={16} thickness={6} sx={{ color: COLORS.brand }} />
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.brand, fontWeight: 700, letterSpacing: '0.05em' }}>
+              THINKING...
             </Typography>
           </Box>
         )}
 
-        {/* Error state with retry */}
+        {/* Error state */}
         {error && (
           <Box sx={{
+            px: 2, py: 1.5,
             bgcolor: COLORS.dangerSurface,
-            border: `1px solid ${COLORS.danger}`,
-            p: 1.5,
+            border: `2px solid ${COLORS.danger}`,
             borderRadius: 0,
-            mb: 1,
+            boxShadow: `4px 4px 0px ${COLORS.danger}`,
           }}>
-            <Typography sx={{
-              fontSize: '0.82rem',
-              color: COLORS.danger,
-              fontWeight: 800,
-              fontFamily: FONT,
-              mb: 0.5,
-            }}>
-              AI temporarily unavailable
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.danger, fontWeight: 900, mb: 0.5 }}>
+              INTELLIGENCE OFFLINE
             </Typography>
-            <Typography sx={{
-              fontSize: '0.72rem',
-              color: COLORS.textMuted,
-              fontFamily: FONT,
-              mb: 1,
-              lineHeight: 1.4,
-            }}>
+            <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', color: COLORS.textSecondary, mb: 1.5 }}>
               {error}
             </Typography>
             {onRetry && (
               <Button
                 size="small"
-                variant="outlined"
+                variant="contained"
                 startIcon={<ReplayIcon sx={{ fontSize: 14 }} />}
                 onClick={onRetry}
                 sx={{
-                  fontFamily: FONT,
-                  fontWeight: 900,
-                  fontSize: '0.65rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                  borderRadius: 0,
-                  borderColor: COLORS.danger,
-                  color: COLORS.danger,
-                  '&:hover': { borderColor: '#B71C1C', bgcolor: 'rgba(211,47,47,0.04)' },
+                  fontFamily: FONT, fontWeight: 900, fontSize: '0.65rem',
+                  bgcolor: COLORS.danger, color: '#fff', borderRadius: 0,
+                  boxShadow: 'none', '&:hover': { bgcolor: COLORS.dangerHover },
                 }}
               >
-                Try Again
+                Retry Connection
               </Button>
             )}
           </Box>
         )}
 
-        {/* Scroll anchor */}
         <div ref={chatEndRef} />
       </Box>
 
-      {/* ── INPUT BAR — always visible (not gated on first response) ── */}
+      {/* ── INPUT BAR ── */}
       <Box sx={{
-        borderTop: `2px solid ${COLORS.kpiBlueBorder}`,
-        bgcolor: COLORS.kpiBlueBg,
-        p: 1.5,
-        flexShrink: 0,
-        display: 'flex',
-        gap: 1,
-        alignItems: 'center',
+        flexShrink: 0, px: 2, py: 2,
+        borderTop: `3px solid ${COLORS.brand}`,
+        bgcolor: COLORS.panelBg,
+        display: 'flex', gap: 1,
       }}>
-        <InputBase
-          placeholder="Ask about scheduling, availability, conflicts..."
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Ask a scheduling query..."
           value={followUpInput || ''}
           onChange={(e) => onFollowUpChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          disabled={loading}
           multiline
           maxRows={4}
-          inputProps={{ 'aria-label': 'Scheduling question for AI' }}
           sx={{
-            flex: 1,
-            fontSize: '0.8rem',
             fontFamily: FONT,
-            bgcolor: COLORS.cardBg,
-            border: `1px solid ${COLORS.kpiBlueBorder}`,
-            borderRadius: 0,
-            px: 1.25,
-            py: 0.75,
-            alignItems: 'flex-end',
-            '&:focus-within': { borderColor: COLORS.sky },
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 0,
+              fontSize: '0.85rem',
+              fontFamily: FONT,
+              bgcolor: COLORS.cardBg,
+              '& fieldset': { border: `2px solid ${COLORS.brand}` },
+              '&:hover fieldset': { borderColor: COLORS.brand },
+              '&.Mui-focused fieldset': { borderWidth: 2, borderColor: COLORS.brand },
+            },
           }}
         />
         <IconButton
-          size="small"
           onClick={() => onSendMessage(followUpInput)}
           disabled={!followUpInput?.trim() || loading}
           sx={{
-            bgcolor: COLORS.sky,
-            color: '#FFF',
-            borderRadius: 0,
-            p: 0.75,
-            flexShrink: 0,
-            alignSelf: 'flex-end',
-            '&:hover': { bgcolor: COLORS.skyHover },
-            '&.Mui-disabled': { bgcolor: COLORS.kpiBlueBorder, color: '#FFF', opacity: 0.6 },
+            minWidth: 50, borderRadius: 0,
+            bgcolor: COLORS.brand, color: COLORS.cream,
+            boxShadow: 'none',
+            '&:hover': { bgcolor: COLORS.accent, boxShadow: 'none' },
+            '&.Mui-disabled': { bgcolor: COLORS.borderLight, color: COLORS.textMuted },
           }}
         >
-          <SendIcon sx={{ fontSize: 16 }} />
+          <SendIcon fontSize="small" />
         </IconButton>
       </Box>
     </Box>

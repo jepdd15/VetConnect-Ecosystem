@@ -788,6 +788,8 @@ export default function PetHistoryScreen({ route, navigation }) {
     time:      'all', // all, 7d, 30d, 1y
   });
 
+  const activeFilterCount = activeFilters.depts.size + activeFilters.staff.size + activeFilters.meds.size + activeFilters.supplies.size + activeFilters.retail.size + activeFilters.diagnoses.size + activeFilters.labs.size + (activeFilters.time !== 'all' ? 1 : 0);
+
   const [pendingFilters, setPendingFilters] = useState({
     depts:     new Set(),
     staff:     new Set(),
@@ -798,6 +800,7 @@ export default function PetHistoryScreen({ route, navigation }) {
     labs:      new Set(),
     time:      'all',
   });
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [highlightedId, setHighlightedId] = useState(null);
   const scrollPerformed = useRef(false);
   // T4.107: Departments — one-shot fetch for dynamic filter chips
@@ -2582,12 +2585,24 @@ export default function PetHistoryScreen({ route, navigation }) {
             <View style={styles.searchDivider} />
             <TouchableOpacity
               style={styles.filterIconBtn}
-              onPress={() => { setPendingFilters(new Set(activeFilters)); setFilterSheetOpen(true); }}
+              onPress={() => {
+                setPendingFilters({
+                  depts: new Set(activeFilters.depts),
+                  staff: new Set(activeFilters.staff),
+                  meds: new Set(activeFilters.meds),
+                  supplies: new Set(activeFilters.supplies),
+                  retail: new Set(activeFilters.retail),
+                  diagnoses: new Set(activeFilters.diagnoses),
+                  labs: new Set(activeFilters.labs),
+                  time: activeFilters.time,
+                });
+                setFilterSheetOpen(true);
+              }}
             >
               <MaterialIcons name="filter-list" size={20} color={COLORS.accent} />
-              {activeFilters.size > 0 && (
+              {activeFilterCount > 0 && (
                 <View style={styles.filterBadge}>
-                  <Text style={styles.filterBadgeText}>{activeFilters.size}</Text>
+                  <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -3319,7 +3334,7 @@ export default function PetHistoryScreen({ route, navigation }) {
         <TouchableOpacity style={styles.filterOverlay} activeOpacity={1} onPress={() => setFilterSheetOpen(false)}>
           <View style={styles.filterSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.filterSheetHandle} />
-            <Text style={styles.filterSheetTitle}>CLINICAL FILTER HUB</Text>
+            <Text style={styles.filterSheetTitle}>FILTERS</Text>
             
             <ScrollView style={styles.filterSheetScroll}>
               {/* 1. Temporal Hub (Time Range) */}
@@ -4456,7 +4471,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   filterSheetTitle: {
-    fontFamily: FONT,
+    fontFamily: FONTS.black,
     fontSize: 16,
     fontWeight: '900',
     color: COLORS.brand,
@@ -4471,7 +4486,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   filterSectionTitle: {
-    fontFamily: FONT,
+    fontFamily: FONTS.black,
     fontSize: 12,
     fontWeight: '900',
     color: COLORS.accent,
@@ -4498,7 +4513,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.brand,
   },
   timeChipText: {
-    fontFamily: FONT,
+    fontFamily: FONTS.bold,
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -4515,14 +4530,14 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0,0,0,0.03)',
   },
   filterSheetLabel: {
-    fontFamily: FONT,
+    fontFamily: FONTS.bold,
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.textPrimary,
     flex: 1,
   },
   filterSheetCount: {
-    fontFamily: FONT,
+    fontFamily: FONTS.bold,
     fontSize: 12,
     color: COLORS.textMuted,
     fontWeight: '600',

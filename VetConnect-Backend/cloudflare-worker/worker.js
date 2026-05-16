@@ -132,27 +132,38 @@ function buildWorkerEmailHtml(title, body) {
 </body></html>`;
 }
 
-// ─── CORS ─────────────────────────────────────────────────────────────────────
+/**
+ * Dynamic CORS resolver.
+ * Allows localhost during development and your production domain.
+ */
+function getCorsHeaders(request) {
+  const allowedOrigins = [
+    'http://localhost:5173',
+    'https://vetconnect-admin.web.app', // Update this to your real production URL
+  ];
+  const origin = request.headers.get('Origin');
+  const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+  return {
+    'Access-Control-Allow-Origin':  allowOrigin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
+}
 
-function jsonResponse(data, status = 200) {
+function jsonResponse(request, data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...CORS_HEADERS,
+      ...getCorsHeaders(request),
     },
   });
 }
 
 // ─── SHARED EXPO PUSH SENDER ─────────────────────────────────────────────────
 
-async function sendToExpo(pushToken, title, body, extraData) {
+async function sendToExpo(request, pushToken, title, body, extraData) {
   try {
     const expoResponse = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
@@ -175,7 +186,7 @@ async function sendToExpo(pushToken, title, body, extraData) {
 
     if (!expoResponse.ok) {
       const errorText = await expoResponse.text();
-      return jsonResponse({
+      return jsonResponse(request, {
         error: 'Expo Push API error.',
         details: errorText,
         expoStatus: expoResponse.status,
@@ -183,9 +194,9 @@ async function sendToExpo(pushToken, title, body, extraData) {
     }
 
     const expoData = await expoResponse.json();
-    return jsonResponse({ success: true, expo: expoData });
+    return jsonResponse(request, { success: true, expo: expoData });
   } catch (err) {
-    return jsonResponse({
+    return jsonResponse(request, {
       error: 'Failed to reach Expo Push API.',
       details: err.message,
     }, 502);
@@ -199,7 +210,7 @@ async function handlePush(request) {
   try {
     payload = await request.json();
   } catch {
-    return jsonResponse({ error: 'Invalid JSON body.' }, 400);
+    return jsonResponse(request, { error: 'Invalid JSON body.' }, 400);
   }
 
   const {
@@ -209,8 +220,8 @@ async function handlePush(request) {
     serviceName, staffName, nextService,
   } = payload;
 
-  if (!pushToken) return jsonResponse({ error: 'pushToken is required.' }, 400);
-  if (!status) return jsonResponse({ error: 'status is required.' }, 400);
+  if (!pushToken) return jsonResponse(request, { error: 'pushToken is required.' }, 400);
+  if (!status) return jsonResponse(request, { error: 'status is required.' }, 400);
 
   let title, body;
   if (customTitle && customBody) {
@@ -219,7 +230,7 @@ async function handlePush(request) {
   } else {
     const template = DEFAULT_TEMPLATES[status];
     if (!template) {
-      return jsonResponse({ error: `No template for status: "${status}".` }, 400);
+      return jsonResponse(request, { error: `No template for status: "${status}".` }, 400);
     }
     title = template.title;
     body = template.body;
@@ -233,7 +244,7 @@ async function handlePush(request) {
   title = interpolateTemplate(title, data);
   body = interpolateTemplate(body, data);
 
-  return sendToExpo(pushToken, title, body, { appointmentId, visitGroupId });
+  return sendToExpo(request, pushToken, title, body, { appointmentId, visitGroupId });
 }
 
 async function handleCustomPush(request) {
@@ -241,16 +252,16 @@ async function handleCustomPush(request) {
   try {
     payload = await request.json();
   } catch {
-    return jsonResponse({ error: 'Invalid JSON body.' }, 400);
+    return jsonResponse(request, { error: 'Invalid JSON body.' }, 400);
   }
 
   const { pushToken, title, body } = payload;
 
-  if (!pushToken) return jsonResponse({ error: 'pushToken is required.' }, 400);
-  if (!title) return jsonResponse({ error: 'title is required.' }, 400);
-  if (!body) return jsonResponse({ error: 'body is required.' }, 400);
+  if (!pushToken) return jsonResponse(request, { error: 'pushToken is required.' }, 400);
+  if (!title) return jsonResponse(request, { error: 'title is required.' }, 400);
+  if (!body) return jsonResponse(request, { error: 'body is required.' }, 400);
 
-  return sendToExpo(pushToken, title, body, {});
+  return sendToExpo(request, pushToken, title, body, {});
 }
 
 // ─── EMAIL RELAY (Resend API) ────────────────────────────────────────────────
@@ -258,20 +269,20 @@ async function handleCustomPush(request) {
 async function handleEmail(request, env) {
   const apiKey = env.RESEND_API_KEY;
   if (!apiKey) {
-    return jsonResponse({ error: 'RESEND_API_KEY not configured.' }, 500);
+    return jsonResponse(request, { error: 'RESEND_API_KEY not configured.' }, 500);
   }
 
   let payload;
   try {
     payload = await request.json();
   } catch {
-    return jsonResponse({ error: 'Invalid JSON body.' }, 400);
+    return jsonResponse(request, { error: 'Invalid JSON body.' }, 400);
   }
 
   const { to, subject, html, from } = payload;
-  if (!to)      return jsonResponse({ error: 'to is required.' }, 400);
-  if (!subject) return jsonResponse({ error: 'subject is required.' }, 400);
-  if (!html)    return jsonResponse({ error: 'html is required.' }, 400);
+  if (!to)      return jsonResponse(request, { error: 'to is required.' }, 400);
+  if (!subject) return jsonResponse(request, { error: 'subject is required.' }, 400);
+  if (!html)    return jsonResponse(request, { error: 'html is required.' }, 400);
 
   const fromAddress = from || env.RESEND_FROM_EMAIL || 'VetConnect <noreply@starbarks.vet>';
 
@@ -292,13 +303,13 @@ async function handleEmail(request, env) {
 
     if (!res.ok) {
       const errText = await res.text();
-      return jsonResponse({ error: 'Resend API error.', details: errText, resendStatus: res.status }, 502);
+      return jsonResponse(request, { error: 'Resend API error.', details: errText, resendStatus: res.status }, 502);
     }
 
     const data = await res.json();
-    return jsonResponse({ success: true, resend: data });
+    return jsonResponse(request, { success: true, resend: data });
   } catch (err) {
-    return jsonResponse({ error: 'Failed to reach Resend API.', details: err.message }, 502);
+    return jsonResponse(request, { error: 'Failed to reach Resend API.', details: err.message }, 502);
   }
 }
 
@@ -307,19 +318,19 @@ async function handleEmail(request, env) {
 async function handleSms(request, env) {
   const apiKey = env.SEMAPHORE_API_KEY;
   if (!apiKey) {
-    return jsonResponse({ error: 'SEMAPHORE_API_KEY not configured.' }, 500);
+    return jsonResponse(request, { error: 'SEMAPHORE_API_KEY not configured.' }, 500);
   }
 
   let payload;
   try {
     payload = await request.json();
   } catch {
-    return jsonResponse({ error: 'Invalid JSON body.' }, 400);
+    return jsonResponse(request, { error: 'Invalid JSON body.' }, 400);
   }
 
   const { to, message } = payload;
-  if (!to)      return jsonResponse({ error: 'to (phone number) is required.' }, 400);
-  if (!message) return jsonResponse({ error: 'message is required.' }, 400);
+  if (!to)      return jsonResponse(request, { error: 'to (phone number) is required.' }, 400);
+  if (!message) return jsonResponse(request, { error: 'message is required.' }, 400);
 
   try {
     const res = await fetch('https://api.semaphore.co/api/v4/messages', {
@@ -335,13 +346,13 @@ async function handleSms(request, env) {
 
     if (!res.ok) {
       const errText = await res.text();
-      return jsonResponse({ error: 'Semaphore API error.', details: errText, semaphoreStatus: res.status }, 502);
+      return jsonResponse(request, { error: 'Semaphore API error.', details: errText, semaphoreStatus: res.status }, 502);
     }
 
     const data = await res.json();
-    return jsonResponse({ success: true, semaphore: data });
+    return jsonResponse(request, { success: true, semaphore: data });
   } catch (err) {
-    return jsonResponse({ error: 'Failed to reach Semaphore API.', details: err.message }, 502);
+    return jsonResponse(request, { error: 'Failed to reach Semaphore API.', details: err.message }, 502);
   }
 }
 
@@ -350,14 +361,26 @@ async function handleSms(request, env) {
 async function handleAiProxy(request, env) {
   const apiKey = env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return jsonResponse({ error: 'ANTHROPIC_API_KEY not configured.' }, 500);
+    return jsonResponse(request, { error: 'ANTHROPIC_API_KEY not configured.' }, 500);
   }
 
   let payload;
   try {
-    payload = await request.json();
-  } catch {
-    return jsonResponse({ error: 'Invalid JSON body.' }, 400);
+    const rawText = await request.text();
+    if (!rawText || rawText.trim() === '') {
+      return jsonResponse(request, { 
+        error: 'Invalid JSON body.', 
+        details: 'The request body is empty. If you are using a redirect (e.g., http to https), the body might have been lost. Ensure your Worker URL starts with https://',
+        method: request.method 
+      }, 400);
+    }
+    payload = JSON.parse(rawText);
+  } catch (err) {
+    return jsonResponse(request, { 
+      error: 'Invalid JSON body.', 
+      details: `Malformed JSON: ${err.message}`,
+      method: request.method 
+    }, 400);
   }
 
   try {
@@ -377,9 +400,9 @@ async function handleAiProxy(request, env) {
     });
 
     const data = await anthropicResponse.json();
-    return jsonResponse(data, anthropicResponse.status);
+    return jsonResponse(request, data, anthropicResponse.status);
   } catch (err) {
-    return jsonResponse({ error: 'Anthropic API unreachable.', details: err.message }, 502);
+    return jsonResponse(request, { error: 'Anthropic API unreachable.', details: err.message }, 502);
   }
 }
 
@@ -1001,18 +1024,16 @@ async function handleBalanceReminders(env) {
   console.log(`[BalanceReminders] ${sent} sent, ${skipped} skipped, ${snoozed} snoozed, ${noToken} no token, ${failed} failed.`);
 }
 
-// ─── MAIN FETCH HANDLER ──────────────────────────────────────────────────────
-
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+      return new Response(null, { status: 204, headers: getCorsHeaders(request) });
     }
 
     const url = new URL(request.url);
 
     if (request.method !== 'POST') {
-      return jsonResponse({ error: 'Method not allowed. Use POST.' }, 405);
+      return jsonResponse(request, { error: 'Method not allowed. Use POST.' }, 405);
     }
 
     if (url.pathname === '/push') {

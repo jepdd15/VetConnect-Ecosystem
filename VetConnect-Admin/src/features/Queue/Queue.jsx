@@ -1743,7 +1743,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     openDispenseResolveDialog,
   }, isToday, departments, isTomorrowView, clinicSettings);
 
-  const showClosingWarning = isClosingTime && isToday && unfinishedCount > 0;
 
   // ======================================================================
   // END-OF-DAY MODAL CALLBACKS (hoisted — hooks must not be inlined in JSX)
@@ -1829,22 +1828,6 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     }}>
       {/* WARNING BANNERS (FLEX-SHRINK: 0) */}
       <Box sx={{ flexShrink: 0 }}>
-      {showClosingWarning && (
-        <Alert 
-          icon={<NightlightRoundIcon sx={{ color: '#FFF' }} />}
-          severity="info" 
-          variant="filled" 
-          sx={{ 
-            mb: 2, 
-            fontWeight: 'bold', 
-            boxShadow: 2, 
-            bgcolor: '#1A237E', // The Midnight Clinical Baseline
-            '& .MuiAlert-icon': { color: '#FFF' }
-          }}
-        >
-           AFTER-HOURS MODE: You have {unfinishedCount} unresolved clinical record(s) remaining for today's final audit. 🧴✨
-        </Alert>
-      )}
 
       {isTomorrowView && hasGhostPatients && (
         <Alert

@@ -344,18 +344,13 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
   }
 
   // ── Channel 3: SMS (critical statuses only) ──────────────────────────────
-  // Independent of push and email — fires only when ALL guards pass:
-  //   channelSettings.smsEnabled       — admin must explicitly opt-in (default false)
-  //                                      (edge case (e): toggle off → skipped)
-  //   ownerPhone                        — null for non-PH or unregistered users
-  //   /^09\d{9}$/.test(ownerPhone)     — validates PH mobile format; rejects landlines
-  //   SMS_CRITICAL_STATUSES.has(status) — only confirmed, appointment-tomorrow,
-  //                                       appointment-today qualify (edge case (f))
-  // Edge cases: (b) no token/email but has phone + critical → SMS fires; (e) toggle
-  // off → skipped; (f) non-critical status (e.g. 'dispensing') → Set.has() false →
-  // skipped; (g) walk-in guest with phone + critical → push skipped, email skipped
-  // (no email), SMS fires.
-  if (channelSettings.smsEnabled && ownerPhone && /^09\d{9}$/.test(ownerPhone) && SMS_CRITICAL_STATUSES.has(status)) {
+  const cleanPhone = (num) => (num || '').replace(/\D/g, '');
+  const isSmsReady = (num) => {
+    const clean = cleanPhone(num);
+    return (clean.startsWith('09') || clean.startsWith('639')) && clean.length >= 10 && clean.length <= 13;
+  };
+
+  if (channelSettings.smsEnabled && ownerPhone && isSmsReady(ownerPhone) && SMS_CRITICAL_STATUSES.has(status)) {
     const smsTemplate = SMS_TEMPLATES[status];
     if (smsTemplate) {
       const interpolate = (str) =>

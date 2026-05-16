@@ -2007,7 +2007,7 @@ export default function Calendar() {
           pt: 2.5,
           pb: 1.5,
           bgcolor: COLORS.cardBg,
-          borderBottom: `2px solid ${COLORS.border}`,
+          borderBottom: `3px solid ${COLORS.accent}`,
           flexShrink: 0,
         }}
       >
@@ -2027,52 +2027,70 @@ export default function Calendar() {
                 ...TYPE.heading,
                 textTransform: 'uppercase',
                 color: COLORS.accent,
-                letterSpacing: '0.06em',
+                fontWeight: 1000,
+                letterSpacing: '0.1em',
                 lineHeight: 1,
               }}
             >
               CALENDAR
             </Typography>
-            <Typography
-              sx={{
-                ...TYPE.meta,
-                color: COLORS.textSecondary,
-                mt: 0.25,
-              }}
-            >
-              {dateLabel}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
+              <CalendarMonthIcon sx={{ fontSize: 16, color: COLORS.brand }} />
+              <Typography
+                sx={{
+                  fontSize: '0.9rem',
+                  fontWeight: 1000,
+                  textTransform: 'uppercase',
+                  color: COLORS.brand,
+                  letterSpacing: '0.02em',
+                  lineHeight: 1,
+                  fontFamily: FONT,
+                }}
+              >
+                {dateLabel}
+              </Typography>
+            </Box>
           </Box>
 
-          {/* Date navigation */}
-          <Stack direction="row" alignItems="center" spacing={0.5}>
+          {/* Date navigation — Stamped Console */}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              border: `2px solid ${COLORS.brand}`,
+              bgcolor: COLORS.cardBg,
+              boxShadow: `3px 3px 0px ${COLORS.brand}`,
+              height: 36,
+            }}
+          >
             <IconButton
               size="small"
               onClick={handlePrev}
               sx={{
-                border: `1px solid ${COLORS.border}`,
                 borderRadius: 0,
+                width: 36,
+                height: 36,
+                borderRight: `1px solid ${COLORS.borderLight}`,
                 '&:hover': { bgcolor: COLORS.surfaceHover },
               }}
             >
-              <ArrowBackIosNewIcon fontSize="small" />
+              <ArrowBackIosNewIcon sx={{ fontSize: 14 }} />
             </IconButton>
 
             <Button
-              variant="outlined"
-              size="small"
               onClick={handleToday}
               disabled={isTodayVisible}
               sx={{
                 borderRadius: 0,
-                borderColor: COLORS.sky,
-                color: COLORS.sky,
-                fontWeight: 700,
+                height: 36,
+                px: 2,
                 fontSize: '0.7rem',
-                px: 1.5,
+                fontWeight: 800,
                 textTransform: 'uppercase',
-                '&:hover': { borderColor: COLORS.skyHover, bgcolor: `${COLORS.sky}11` },
-                '&.Mui-disabled': { borderColor: COLORS.border, color: COLORS.textMuted },
+                color: COLORS.brand,
+                borderRight: `1px solid ${COLORS.borderLight}`,
+                '&:hover': { bgcolor: COLORS.surfaceHover },
+                '&.Mui-disabled': { color: COLORS.textMuted },
               }}
             >
               Today
@@ -2082,42 +2100,54 @@ export default function Calendar() {
               size="small"
               onClick={handleNext}
               sx={{
-                border: `1px solid ${COLORS.border}`,
                 borderRadius: 0,
+                width: 36,
+                height: 36,
                 '&:hover': { bgcolor: COLORS.surfaceHover },
               }}
             >
-              <ArrowForwardIosIcon fontSize="small" />
+              <ArrowForwardIosIcon sx={{ fontSize: 14 }} />
             </IconButton>
-          </Stack>
+          </Box>
 
-          {/* View toggle tabs */}
-          <Tabs
-            value={view}
-            onChange={(_, v) => v && setView(v)}
-            textColor="inherit"
-            TabIndicatorProps={{
-              style: { backgroundColor: COLORS.sky, height: 3 },
-            }}
+          {/* View toggle — Stitched Buttons */}
+          <Box
             sx={{
-              minHeight: 36,
-              border: `1px solid ${COLORS.border}`,
-              '& .MuiTab-root': {
-                borderRadius: 0,
-                minHeight: 36,
-                fontWeight: 700,
-                fontSize: '0.7rem',
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                color: COLORS.textSecondary,
-                px: 2,
-                '&.Mui-selected': { color: COLORS.sky },
-              },
+              display: 'flex',
+              border: `2px solid ${COLORS.brand}`,
+              bgcolor: COLORS.cardBg,
+              boxShadow: `3px 3px 0px ${COLORS.brand}`,
+              height: 36,
             }}
           >
-            <Tab value="week"  label="Week"  />
-            <Tab value="month" label="Month" />
-          </Tabs>
+            {['week', 'month'].map((v) => {
+              const isActive = view === v;
+              return (
+                <Button
+                  key={v}
+                  onClick={() => setView(v)}
+                  sx={{
+                    borderRadius: 0,
+                    height: 32, // internal fit
+                    m: '2px',
+                    px: 2,
+                    fontSize: '0.7rem',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    letterSpacing: 1,
+                    bgcolor: isActive ? COLORS.sky : 'transparent',
+                    color: isActive ? '#FFF' : COLORS.textSecondary,
+                    '&:hover': {
+                      bgcolor: isActive ? COLORS.skyHover : COLORS.surfaceHover,
+                    },
+                    borderRight: v === 'week' ? `1px solid ${COLORS.borderLight}` : 'none',
+                  }}
+                >
+                  {v}
+                </Button>
+              );
+            })}
+          </Box>
 
           {/* Refresh */}
           <IconButton
@@ -2126,15 +2156,18 @@ export default function Calendar() {
             disabled={loading}
             title="Refresh appointments"
             sx={{
-              border: `1px solid ${COLORS.border}`,
+              border: `2px solid ${COLORS.brand}`,
               borderRadius: 0,
+              bgcolor: COLORS.cardBg,
+              boxShadow: `2px 2px 0px ${COLORS.brand}`,
               '&:hover': { bgcolor: COLORS.surfaceHover },
+              '&:active': { transform: 'translate(1px, 1px)', boxShadow: 'none' },
             }}
           >
-            <RefreshIcon fontSize="small" />
+            <RefreshIcon sx={{ fontSize: 18 }} />
           </IconButton>
 
-          {/* Ask AI button — visible only when LLM is enabled */}
+          {/* Ask AI button — Stamped Primary Action */}
           {llmConfig.enabled && (
             <Button
               variant="contained"
@@ -2143,13 +2176,22 @@ export default function Calendar() {
               onClick={() => setCalAIOpen((prev) => !prev)}
               sx={{
                 borderRadius: 0,
-                bgcolor: calAIOpen ? COLORS.skyHover : COLORS.sky,
-                fontWeight: 900,
+                bgcolor: COLORS.brand,
+                color: COLORS.cream,
+                fontWeight: 1000,
                 fontSize: '0.7rem',
                 textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                px: 2,
-                '&:hover': { bgcolor: COLORS.skyHover },
+                letterSpacing: '0.08em',
+                px: 2.5,
+                height: 36,
+                border: `2px solid ${COLORS.brand}`,
+                boxShadow: calAIOpen ? 'none' : `4px 4px 0px rgba(0,0,0,0.25)`,
+                transform: calAIOpen ? 'translate(2px, 2px)' : 'none',
+                transition: 'all 0.1s ease',
+                '&:hover': { 
+                  bgcolor: COLORS.accent,
+                  boxShadow: calAIOpen ? 'none' : `4px 4px 0px rgba(0,0,0,0.3)`,
+                },
               }}
             >
               {calAIOpen ? 'Close AI' : 'Ask AI'}
@@ -2175,10 +2217,12 @@ export default function Calendar() {
                 onClick={() => setDeptFilter(null)}
                 sx={{
                   borderRadius: 0,
-                  fontWeight: deptFilter === null ? 900 : 600,
+                  fontWeight: deptFilter === null ? 1000 : 700,
                   bgcolor: deptFilter === null ? COLORS.sky : COLORS.cardBg,
                   color: deptFilter === null ? '#fff' : COLORS.textSecondary,
-                  border: `2px solid ${deptFilter === null ? COLORS.skyHover : COLORS.border}`,
+                  border: `2px solid ${COLORS.brand}`,
+                  boxShadow: deptFilter === null ? 'none' : `2px 2px 0px ${COLORS.brand}`,
+                  transform: deptFilter === null ? 'translate(1px, 1px)' : 'none',
                   '&:hover': {
                     bgcolor: deptFilter === null ? COLORS.skyHover : COLORS.surfaceHover,
                   },
@@ -2200,6 +2244,7 @@ export default function Calendar() {
                           borderRadius: 0,
                           flexShrink: 0,
                           ml: '6px !important',
+                          border: `1px solid ${COLORS.brand}`,
                         }}
                       />
                     }
@@ -2207,10 +2252,12 @@ export default function Calendar() {
                     onClick={() => setDeptFilter(isActive ? null : dept.name)}
                     sx={{
                       borderRadius: 0,
-                      fontWeight: isActive ? 900 : 600,
+                      fontWeight: isActive ? 1000 : 700,
                       bgcolor: isActive ? `${deptColor}22` : COLORS.cardBg,
                       color: isActive ? deptColor : COLORS.textSecondary,
-                      border: `2px solid ${isActive ? deptColor : COLORS.border}`,
+                      border: `2px solid ${COLORS.brand}`,
+                      boxShadow: isActive ? 'none' : `2px 2px 0px ${COLORS.brand}`,
+                      transform: isActive ? 'translate(1px, 1px)' : 'none',
                       '&:hover': { bgcolor: `${deptColor}11` },
                     }}
                   />
@@ -2325,10 +2372,8 @@ export default function Calendar() {
         {/* AI Panel — collapsible right column (shrinks calendar, not overlay) */}
         {calAIOpen && (
           <Box sx={{
-            width: { xs: 320, lg: 380 },
+            width: 440,
             flexShrink: 0,
-            borderLeft: `2px solid ${COLORS.border}`,
-            bgcolor: COLORS.surface,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',

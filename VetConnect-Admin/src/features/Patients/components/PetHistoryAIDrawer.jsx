@@ -29,12 +29,20 @@ const QUICK_ACTIONS = [
     prompt: "Give me a concise summary of this patient's complete medical history, highlighting key diagnoses, recurring conditions, and current treatment status.",
   },
   {
-    label: 'Pre-Visit Briefing',
-    prompt: 'Prepare a pre-visit briefing for this patient. Include: current medications, pending vaccinations, last visit findings, any chronic conditions, and things to watch for.',
+    label: 'Compliance Audit',
+    prompt: "Review the 'Plan' (P) sections of all past SOAP records. Cross-reference them with subsequent visits to identify any recommended follow-ups, tests, or treatments that were missed or delayed. Flag any gaps in clinical compliance.",
+  },
+  {
+    label: 'Signalment Risks',
+    prompt: "Based on this patient's breed, age, and species, scan the entire medical history for early indicators or subtle mentions of breed-specific predispositions or age-related degenerative changes (e.g., mobility issues, organ function shifts).",
+  },
+  {
+    label: 'Episode Mapping',
+    prompt: "Identify recurring clinical episodes (e.g., skin flares, GI issues, ear infections). Map these episodes over time to identify seasonal patterns, frequency, and which treatments have historically been most effective.",
   },
   {
     label: 'Detect Patterns',
-    prompt: "Analyze this patient's medical records for patterns: recurring conditions, weight trends, medication changes, and any concerning trajectories that warrant attention.",
+    prompt: "Analyze this patient's medical records for broader patterns: weight trends, medication changes, and any concerning trajectories that warrant attention.",
   },
   {
     label: 'Vaccination Audit',
@@ -47,6 +55,10 @@ const QUICK_ACTIONS = [
   {
     label: 'Weight Trajectory',
     prompt: "Extract all weight data points. Provide a summary of the 12-month weight trend and flag any significant fluctuations (>5% change) that warrant clinical review.",
+  },
+  {
+    label: 'Biometric Trends',
+    prompt: "Analyze the relationship between Weight, BCS, and Vital signs across the entire history. Identify any 'Sarcopenic' patterns (weight loss despite stable BCS) or progressive shifts in Heart Rate, Respiratory Rate, or Temperature that warrant clinical investigation.",
   },
 ];
 

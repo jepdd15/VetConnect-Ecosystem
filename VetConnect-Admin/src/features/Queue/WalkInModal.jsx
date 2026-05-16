@@ -563,44 +563,65 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
         <Box>
           {/* Existing client pet selection */}
           {walkInType === 'existing' && (
-            <Stack spacing={1.5} sx={{ mb: 1.5 }}>
-              {fetchingPets ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
-                  <CircularProgress size={24} sx={{ color: COLORS.accent }} />
-                </Box>
-              ) : selectedClient ? (
-                <>
-                  <FormControl fullWidth size="small" variant="outlined">
-                    <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>SELECT PET IDENTITY</InputLabel>
-                    <Select
-                      value={entry.selectedPet || ''}
-                      onChange={(e) => updateEntry(index, { selectedPet: e.target.value, isNewPet: false })}
-                      disabled={entry.isNewPet}
-                      label="SELECT PET IDENTITY"
-                      sx={sxSelect}
-                    >
-                      {clientPets.map(p => (
-                        <MenuItem key={p.id} value={p} sx={{ fontWeight: 800, fontSize: '0.85rem' }}>
-                          {(p.species === 'Dog' || p.species === 'Canine') ? 'DOG' : 'CAT'} — {p.name?.toUpperCase()}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        size="small"
-                        checked={entry.isNewPet}
-                        onChange={(e) => updateEntry(index, { isNewPet: e.target.checked, selectedPet: null })}
-                      />
-                    }
-                    label={<Typography sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>REGISTER NEW PET</Typography>}
-                  />
-
-                </>
-              ) : null}
-            </Stack>
+            <Box sx={{ 
+              mb: 3, 
+              p: 3, 
+              bgcolor: '#FDFCF0', 
+              border: '2px solid #1a1a1a', 
+              borderRadius: 0,
+              position: 'relative',
+              boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                top: 12,
+                left: 12,
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                bgcolor: 'rgba(0,0,0,0.1)',
+                border: '1px solid rgba(0,0,0,0.2)',
+                boxShadow: 'inset 2px 2px 4px rgba(0,0,0,0.1)'
+              }
+            }}>
+              <Stack spacing={2}>
+                {fetchingPets ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+                    <CircularProgress size={24} sx={{ color: COLORS.accent }} />
+                  </Box>
+                ) : selectedClient ? (
+                  <>
+                    <FormControl fullWidth size="small" variant="outlined">
+                      <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>SELECT PET IDENTITY</InputLabel>
+                      <Select
+                        value={entry.selectedPet || ''}
+                        onChange={(e) => updateEntry(index, { selectedPet: e.target.value, isNewPet: false })}
+                        disabled={entry.isNewPet}
+                        label="SELECT PET IDENTITY"
+                        sx={sxSelect}
+                      >
+                        {clientPets.map(p => (
+                          <MenuItem key={p.id} value={p} sx={{ fontWeight: 800, fontSize: '0.85rem' }}>
+                            {(p.species === 'Dog' || p.species === 'Canine') ? 'DOG' : 'CAT'} — {p.name?.toUpperCase()}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+  
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={entry.isNewPet}
+                          onChange={(e) => updateEntry(index, { isNewPet: e.target.checked, selectedPet: null })}
+                        />
+                      }
+                      label={<Typography sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>REGISTER NEW PET</Typography>}
+                    />
+                  </>
+                ) : null}
+              </Stack>
+            </Box>
           )}
 
           {/* No-show warning for this pet */}
@@ -618,188 +639,252 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
 
           {/* New pet genome form */}
           {isNew && (
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, md: 4 }}>
-                <TextField size="small" label="PET NAME" variant="outlined" fullWidth
-                  value={entry.name}
-                  onChange={e => updateEntry(index, { name: e.target.value })}
-                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                  sx={sxField}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 2.5 }}>
-                <FormControl fullWidth size="small" variant="outlined">
-                  <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>SPECIES</InputLabel>
-                  <Select label="SPECIES" value={entry.species}
-                    onChange={e => updateEntry(index, { species: e.target.value, breed: '' })}
-                    sx={sxSelect}>
-                    <MenuItem value="Canine" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>CANINE</MenuItem>
-                    <MenuItem value="Feline" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>FELINE</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid size={{ xs: 12, md: 2.5 }}>
-                <TextField size="small" label="WEIGHT (KG)" variant="outlined" fullWidth type="number"
-                  inputProps={{ step: '0.1', min: '0', style: { fontWeight: 900, color: COLORS.success, fontSize: '0.85rem' } }}
-                  value={entry.weight}
-                  onChange={e => updateEntry(index, { weight: e.target.value })}
-                  sx={sxField}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 3 }}>
-                <Autocomplete
-                  freeSolo
-                  options={BREED_CATALOG[entry.species] || []}
-                  value={entry.breed || ''}
-                  onChange={(_, v) => updateEntry(index, { breed: v || '' })}
-                  onInputChange={(_, v, reason) => { if (reason === 'input') updateEntry(index, { breed: v }); }}
-                  componentsProps={{ paper: { sx: { borderRadius: 0, border: `1px solid ${COLORS.accent}` } } }}
-                  renderInput={(params) => (
-                    <TextField {...params} size="small" label="BREED / LINEAGE" variant="outlined" fullWidth
-                      inputProps={{ ...params.inputProps, style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                      sx={sxField}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 3 }}>
-                <TextField size="small" label="COLOR / MARKINGS" variant="outlined" fullWidth
-                  value={entry.color}
-                  onChange={e => updateEntry(index, { color: e.target.value })}
-                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                  sx={sxField}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 9 }}>
-                <Box sx={{ p: 1, border: `1px dashed ${COLORS.borderLight}`, bgcolor: 'transparent' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
-                    <CakeIcon sx={{ fontSize: 18, color: COLORS.accentWarm }} />
-                    <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent }}>BIRTHDATE / AGE MODE</Typography>
+            <Box sx={{ 
+              p: 3, 
+              bgcolor: '#FDFCF0', 
+              border: '2px solid #1a1a1a', 
+              borderRadius: 0,
+              position: 'relative',
+              boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                top: 12,
+                left: 12,
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                bgcolor: 'rgba(0,0,0,0.1)',
+                border: '1px solid rgba(0,0,0,0.2)',
+                boxShadow: 'inset 2px 2px 4px rgba(0,0,0,0.1)'
+              }
+            }}>
+              <Grid container spacing={2.5}>
+                {/* ROW 1: CORE NAME */}
+                <Grid size={{ xs: 12 }}>
+                  <TextField size="small" label="PET NAME" variant="outlined" fullWidth
+                    value={entry.name}
+                    onChange={e => updateEntry(index, { name: e.target.value })}
+                    inputProps={{ style: { fontWeight: 900, fontSize: '1rem', letterSpacing: 1 } }}
+                    sx={sxField}
+                  />
+                </Grid>
+
+                {/* ROW 2: SPECIES & BREED */}
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Box sx={{ border: '2px solid #1a1a1a', height: 40, display: 'flex', alignItems: 'center', bgcolor: 'rgba(0,0,0,0.02)' }}>
                     <ToggleButtonGroup
+                      fullWidth
                       size="small"
-                      value={entry.dobMode}
+                      value={entry.species}
                       exclusive
-                      onChange={(_, val) => val && updateEntry(index, { dobMode: val })}
-                      sx={{ ml: 'auto', height: 26 }}
+                      onChange={(_, val) => val && updateEntry(index, { species: val, breed: '' })}
+                      sx={{ height: '100%' }}
                     >
-                      <ToggleButton value="exact" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>EXACT</ToggleButton>
-                      <ToggleButton value="approximate" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>ESTIMATE</ToggleButton>
-                      <ToggleButton value="unknown" sx={{ fontSize: '0.65rem', fontWeight: 900, px: 2, borderRadius: 0 }}>UNKNOWN</ToggleButton>
+                      <ToggleButton value="Canine" sx={{ fontSize: '0.75rem', fontWeight: 900, borderRadius: 0, border: 'none', '&.Mui-selected': { bgcolor: COLORS.accent, color: 'white', '&:hover': { bgcolor: COLORS.brand } } }}>CANINE</ToggleButton>
+                      <ToggleButton value="Feline" sx={{ fontSize: '0.75rem', fontWeight: 900, borderRadius: 0, border: 'none', borderLeft: '2px solid #1a1a1a', '&.Mui-selected': { bgcolor: COLORS.accent, color: 'white', '&:hover': { bgcolor: COLORS.brand } } }}>FELINE</ToggleButton>
                     </ToggleButtonGroup>
                   </Box>
-                  {entry.dobMode === 'exact' && (
-                    <TextField size="small" type="date" label="PET BIRTHDAY" variant="outlined" fullWidth
-                      InputLabelProps={{ shrink: true }}
-                      inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                      value={entry.dob}
-                      onChange={e => updateEntry(index, { dob: e.target.value })}
-                      sx={sxField}
-                    />
-                  )}
-                  {entry.dobMode === 'approximate' && (
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <TextField size="small" label="YEARS" type="number" fullWidth
-                        value={entry.estYears}
-                        onChange={e => updateEntry(index, { estYears: e.target.value })}
-                        inputProps={{ style: { fontWeight: 900 } }}
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Autocomplete
+                    freeSolo
+                    options={BREED_CATALOG[entry.species] || []}
+                    value={entry.breed || ''}
+                    onChange={(_, v) => updateEntry(index, { breed: v || '' })}
+                    onInputChange={(_, v, reason) => { if (reason === 'input') updateEntry(index, { breed: v }); }}
+                    componentsProps={{ paper: { sx: { borderRadius: 0, border: `2px solid #1a1a1a` } } }}
+                    renderInput={(params) => (
+                      <TextField {...params} size="small" label="BREED / LINEAGE" variant="outlined" fullWidth
+                        inputProps={{ ...params.inputProps, style: { fontWeight: 900, fontSize: '0.85rem' } }}
                         sx={sxField}
                       />
-                      <TextField size="small" label="MONTHS" type="number" fullWidth
-                        value={entry.estMonths}
-                        onChange={e => updateEntry(index, { estMonths: e.target.value })}
-                        inputProps={{ style: { fontWeight: 900 } }}
-                        sx={sxField}
-                      />
-                    </Box>
-                  )}
-                  {entry.dobMode === 'unknown' && (
-                    <Typography variant="caption" sx={{ color: COLORS.accentWarm, fontStyle: 'italic', fontWeight: 800 }}>
-                      Age will be determined by the veterinarian during the physical exam.
-                    </Typography>
-                  )}
-                </Box>
-              </Grid>
-              <Grid size={{ xs: 12, md: 2.5 }}>
-                <FormControl fullWidth size="small" variant="outlined">
-                  <InputLabel sx={{ fontWeight: 900, color: COLORS.accent, fontSize: '0.8rem' }}>GENDER</InputLabel>
-                  <Select label="GENDER" value={entry.gender}
-                    onChange={e => updateEntry(index, { gender: e.target.value })}
-                    sx={sxSelect}>
-                    <MenuItem value="Male" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>MALE</MenuItem>
-                    <MenuItem value="Female" sx={{ fontWeight: 800, fontSize: '0.85rem' }}>FEMALE</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid size={{ xs: 12, md: 3.5 }}>
-                <TextField size="small" label="MICROCHIP ID" variant="outlined" fullWidth
-                  value={entry.microchip}
-                  onChange={e => updateEntry(index, { microchip: e.target.value })}
-                  inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                  sx={sxField}
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <Box sx={{ p: 1, border: '1.2px solid', borderColor: entry.showAllergyInput ? COLORS.danger : COLORS.borderInput, bgcolor: 'transparent' }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: entry.showAllergyInput ? 1.5 : 0 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <WarningIcon sx={{ color: entry.showAllergyInput ? COLORS.danger : COLORS.border, fontSize: 18 }} />
-                      <Typography sx={{ fontWeight: 900, fontSize: '0.78rem', color: entry.showAllergyInput ? COLORS.danger : COLORS.textMuted }}>
-                        RECORD MEDICAL ALLERGIES?
-                      </Typography>
-                    </Box>
-                    <Switch size="small" color="error" checked={entry.showAllergyInput}
-                      onChange={e => updateEntry(index, { showAllergyInput: e.target.checked, allergyArray: e.target.checked ? entry.allergyArray : [] })}
+                    )}
+                  />
+                </Grid>
+
+                {/* ROW 3: WEIGHT & COLOR */}
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField size="small" label="WEIGHT (KG)" variant="outlined" fullWidth type="number"
+                    inputProps={{ step: '0.1', min: '0', style: { fontWeight: 900, color: COLORS.success, fontSize: '0.85rem' } }}
+                    value={entry.weight}
+                    onChange={e => updateEntry(index, { weight: e.target.value })}
+                    sx={sxField}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField size="small" label="COLOR / MARKINGS" variant="outlined" fullWidth
+                    value={entry.color}
+                    onChange={e => updateEntry(index, { color: e.target.value })}
+                    inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                    sx={sxField}
+                  />
+                </Grid>
+
+                {/* ROW 4: GENDER & REPRODUCTIVE STATUS */}
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Box sx={{ border: '2px solid #1a1a1a', height: 40, display: 'flex', alignItems: 'center', bgcolor: 'rgba(0,0,0,0.02)' }}>
+                    <ToggleButtonGroup
+                      fullWidth
+                      size="small"
+                      value={entry.gender}
+                      exclusive
+                      onChange={(_, val) => val && updateEntry(index, { gender: val })}
+                      sx={{ height: '100%' }}
+                    >
+                      <ToggleButton value="Male" sx={{ 
+                        fontSize: '0.75rem', fontWeight: 900, borderRadius: 0, border: 'none',
+                        '&.Mui-selected': { 
+                          bgcolor: '#90CAF9', 
+                          color: 'white', 
+                          boxShadow: 'inset 4px 4px 0px rgba(0,0,0,0.1)',
+                          '&:hover': { bgcolor: '#42A5F5' } 
+                        } 
+                      }}>MALE</ToggleButton>
+                      <ToggleButton value="Female" sx={{ 
+                        fontSize: '0.75rem', fontWeight: 900, borderRadius: 0, border: 'none', borderLeft: '2px solid #1a1a1a',
+                        '&.Mui-selected': { 
+                          bgcolor: '#F48FB1', 
+                          color: 'white', 
+                          boxShadow: 'inset 4px 4px 0px rgba(0,0,0,0.1)',
+                          '&:hover': { bgcolor: '#EC407A' } 
+                        } 
+                      }}>FEMALE</ToggleButton>
+                    </ToggleButtonGroup>
+                  </Box>
+                </Grid>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Box sx={{ border: '2px solid #1a1a1a', height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(0,0,0,0.02)', px: 2 }}>
+                    <FormControlLabel
+                      control={<Switch size="small" checked={entry.isNeutered} onChange={e => updateEntry(index, { isNeutered: e.target.checked })} color="success" />}
+                      label={<Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent, ml: 1 }}>SPAYED / NEUTERED</Typography>}
+                      sx={{ m: 0 }}
                     />
                   </Box>
-                  {entry.showAllergyInput && (
-                    <>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
-                        {entry.allergyArray.map((allergy, ai) => (
-                          <Chip key={ai} label={allergy.toUpperCase()}
-                            onDelete={() => updateEntry(index, { allergyArray: entry.allergyArray.filter((_, i) => i !== ai) })}
-                            sx={{ bgcolor: COLORS.danger, color: 'white', fontWeight: 900, fontSize: '0.7rem', borderRadius: 0, '& .MuiChip-deleteIcon': { color: 'white!important', opacity: 0.8 } }}
-                          />
-                        ))}
-                        {entry.allergyArray.length === 0 && (
-                          <Typography variant="caption" sx={{ color: COLORS.danger, fontStyle: 'italic', fontWeight: 800 }}>No allergens added yet...</Typography>
-                        )}
-                      </Box>
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        <TextField fullWidth size="small" placeholder="Type allergy (e.g. Peanuts, Chicken)"
-                          value={entry.currentAllergyInput}
-                          onChange={e => updateEntry(index, { currentAllergyInput: e.target.value })}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter' && entry.currentAllergyInput.trim()) {
-                              e.preventDefault();
-                              updateEntry(index, {
-                                allergyArray: [...entry.allergyArray, entry.currentAllergyInput.trim()],
-                                currentAllergyInput: '',
-                              });
-                            }
-                          }}
-                          inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                </Grid>
+
+                {/* AGE BLOCK */}
+                <Grid size={{ xs: 12 }}>
+                  <Box sx={{ 
+                    p: 2, 
+                    border: `2px solid #1a1a1a`, 
+                    bgcolor: 'rgba(0,0,0,0.02)'
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                      <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent, letterSpacing: 1 }}>AGE</Typography>
+                      <ToggleButtonGroup
+                        fullWidth
+                        size="small"
+                        value={entry.dobMode}
+                        exclusive
+                        onChange={(_, val) => val && updateEntry(index, { dobMode: val })}
+                        sx={{ ml: 2, height: 28, border: '2px solid #1a1a1a', borderRadius: 0, overflow: 'hidden' }}
+                      >
+                        <ToggleButton value="exact" sx={{ 
+                          fontSize: '0.65rem', fontWeight: 900, borderRadius: 0, border: 'none',
+                          '&.Mui-selected': { bgcolor: COLORS.accent, color: 'white', boxShadow: 'inset 4px 4px 0px rgba(0,0,0,0.1)', '&:hover': { bgcolor: COLORS.brand } }
+                        }}>EXACT</ToggleButton>
+                        <ToggleButton value="approximate" sx={{ 
+                          fontSize: '0.65rem', fontWeight: 900, borderRadius: 0, border: 'none', borderLeft: '2px solid #1a1a1a',
+                          '&.Mui-selected': { bgcolor: COLORS.accent, color: 'white', boxShadow: 'inset 4px 4px 0px rgba(0,0,0,0.1)', '&:hover': { bgcolor: COLORS.brand } }
+                        }}>ESTIMATE</ToggleButton>
+                        <ToggleButton value="unknown" sx={{ 
+                          fontSize: '0.65rem', fontWeight: 900, borderRadius: 0, border: 'none', borderLeft: '2px solid #1a1a1a',
+                          '&.Mui-selected': { bgcolor: COLORS.accent, color: 'white', boxShadow: 'inset 4px 4px 0px rgba(0,0,0,0.1)', '&:hover': { bgcolor: COLORS.brand } }
+                        }}>UNKNOWN</ToggleButton>
+                      </ToggleButtonGroup>
+                    </Box>
+                    {entry.dobMode === 'exact' && (
+                      <TextField size="small" type="date" label="PET BIRTHDAY" variant="outlined" fullWidth
+                        InputLabelProps={{ shrink: true }}
+                        inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                        value={entry.dob}
+                        onChange={e => updateEntry(index, { dob: e.target.value })}
+                        sx={sxField}
+                      />
+                    )}
+                    {entry.dobMode === 'approximate' && (
+                      <Box sx={{ display: 'flex', gap: 2 }}>
+                        <TextField size="small" label="YEARS" type="number" fullWidth
+                          value={entry.estYears}
+                          onChange={e => updateEntry(index, { estYears: e.target.value })}
+                          inputProps={{ style: { fontWeight: 900 } }}
                           sx={sxField}
                         />
-                        <Button variant="contained" color="error"
-                          disabled={!entry.currentAllergyInput.trim()}
-                          onClick={() => updateEntry(index, {
-                            allergyArray: [...entry.allergyArray, entry.currentAllergyInput.trim()],
-                            currentAllergyInput: '',
-                          })}
-                          sx={{ fontWeight: 900, minWidth: 40, borderRadius: 0 }}
-                        >+</Button>
+                        <TextField size="small" label="MONTHS" type="number" fullWidth
+                          value={entry.estMonths}
+                          onChange={e => updateEntry(index, { estMonths: e.target.value })}
+                          inputProps={{ style: { fontWeight: 900 } }}
+                          sx={sxField}
+                        />
                       </Box>
-                    </>
-                  )}
-                </Box>
+                    )}
+                    {entry.dobMode === 'unknown' && (
+                      <Typography variant="caption" sx={{ color: COLORS.accent, fontStyle: 'italic', fontWeight: 800 }}>
+                        Age will be determined by the veterinarian during the physical exam.
+                      </Typography>
+                    )}
+                  </Box>
+                </Grid>
+
+                {/* ALLERGIES */}
+                <Grid size={{ xs: 12 }}>
+                  <Box sx={{ p: 2, border: '2px solid', borderColor: entry.showAllergyInput ? COLORS.danger : '#1a1a1a', bgcolor: 'transparent' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: entry.showAllergyInput ? 1.5 : 0 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <WarningIcon sx={{ color: entry.showAllergyInput ? COLORS.danger : COLORS.border, fontSize: 18 }} />
+                        <Typography sx={{ fontWeight: 900, fontSize: '0.78rem', color: entry.showAllergyInput ? COLORS.danger : COLORS.textMuted }}>
+                          RECORD MEDICAL ALLERGIES?
+                        </Typography>
+                      </Box>
+                      <Switch size="small" color="error" checked={entry.showAllergyInput}
+                        onChange={e => updateEntry(index, { showAllergyInput: e.target.checked, allergyArray: e.target.checked ? entry.allergyArray : [] })}
+                      />
+                    </Box>
+                    {entry.showAllergyInput && (
+                      <>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
+                          {entry.allergyArray.map((allergy, ai) => (
+                            <Chip key={ai} label={allergy.toUpperCase()}
+                              onDelete={() => updateEntry(index, { allergyArray: entry.allergyArray.filter((_, i) => i !== ai) })}
+                              sx={{ bgcolor: COLORS.danger, color: 'white', fontWeight: 900, fontSize: '0.7rem', borderRadius: 0, '& .MuiChip-deleteIcon': { color: 'white!important', opacity: 0.8 } }}
+                            />
+                          ))}
+                          {entry.allergyArray.length === 0 && (
+                            <Typography variant="caption" sx={{ color: COLORS.danger, fontStyle: 'italic', fontWeight: 800 }}>No allergens added yet...</Typography>
+                          )}
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <TextField fullWidth size="small" placeholder="Type allergy (e.g. Peanuts, Chicken)"
+                            value={entry.currentAllergyInput}
+                            onChange={e => updateEntry(index, { currentAllergyInput: e.target.value })}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && entry.currentAllergyInput.trim()) {
+                                e.preventDefault();
+                                updateEntry(index, {
+                                  allergyArray: [...entry.allergyArray, entry.currentAllergyInput.trim()],
+                                  currentAllergyInput: '',
+                                });
+                              }
+                            }}
+                            inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
+                            sx={sxField}
+                          />
+                          <Button variant="contained" color="error"
+                            disabled={!entry.currentAllergyInput.trim()}
+                            onClick={() => updateEntry(index, {
+                              allergyArray: [...entry.allergyArray, entry.currentAllergyInput.trim()],
+                              currentAllergyInput: '',
+                            })}
+                            sx={{ fontWeight: 900, minWidth: 40, borderRadius: 0 }}
+                          >+</Button>
+                        </Box>
+                      </>
+                    )}
+                  </Box>
+                </Grid>
               </Grid>
-              <Grid size={{ xs: 12 }}>
-                <FormControlLabel
-                  control={<Switch size="small" checked={entry.isNeutered} onChange={e => updateEntry(index, { isNeutered: e.target.checked })} color="success" />}
-                  label={<Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.accent }}>SPAYED / NEUTERED</Typography>}
-                />
-              </Grid>
-            </Grid>
+            </Box>
           )}
         </Box>
       </Collapse>
@@ -899,7 +984,26 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
               <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: 900, mb: 1, display: 'block', letterSpacing: 1 }}>
                 1. OWNER IDENTITY
               </Typography>
-              <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
+              <Paper elevation={0} sx={{ 
+                p: 3, 
+                bgcolor: '#FDFCF0', 
+                border: '2px solid #1a1a1a', 
+                borderRadius: 0,
+                position: 'relative',
+                boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: 12,
+                  left: 12,
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  bgcolor: 'rgba(0,0,0,0.1)',
+                  border: '1px solid rgba(0,0,0,0.2)',
+                  boxShadow: 'inset 2px 2px 4px rgba(0,0,0,0.1)'
+                }
+              }}>
                 {walkInType === 'existing' ? (
                   <Autocomplete
                     options={clients}
@@ -919,7 +1023,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                     )}
                   />
                 ) : (
-                  <Grid container spacing={2}>
+                  <Grid container spacing={2.5}>
                     <Grid size={{ xs: 12, md: 5 }}>
                       <TextField size="small" label="OWNER FULL NAME" variant="outlined" fullWidth
                         value={guestName} onChange={e => setGuestName(e.target.value)}
@@ -943,14 +1047,14 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                         sx={sxField}
                       />
                     </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
+                    <Grid size={{ xs: 12, md: 7 }}>
                       <TextField size="small" label="STREET / BARANGAY" variant="outlined" fullWidth
                         value={guestAddress}
                         onChange={e => setGuestAddress(e.target.value)}
                         sx={sxField}
                       />
                     </Grid>
-                    <Grid size={{ xs: 12, md: 3 }}>
+                    <Grid size={{ xs: 12, md: 5 }}>
                       <TextField size="small" label="CITY / MUNICIPALITY" variant="outlined" fullWidth
                         value={guestCity}
                         onChange={e => setGuestCity(e.target.value)}
@@ -989,7 +1093,26 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
               <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: 900, mb: 1, display: 'block', letterSpacing: 1 }}>
                 3. CLINICAL INTAKE
               </Typography>
-              <Paper elevation={0} sx={{ p: 3, borderRadius: 0, border: `2px solid ${COLORS.accent}`, bgcolor: COLORS.cardBg }}>
+              <Paper elevation={0} sx={{ 
+                p: 3, 
+                bgcolor: '#FDFCF0', 
+                border: '2px solid #1a1a1a', 
+                borderRadius: 0,
+                position: 'relative',
+                boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: 12,
+                  left: 12,
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  bgcolor: 'rgba(0,0,0,0.1)',
+                  border: '1px solid rgba(0,0,0,0.2)',
+                  boxShadow: 'inset 2px 2px 4px rgba(0,0,0,0.1)'
+                }
+              }}>
                 <Autocomplete
                   multiple
                   options={[...(servicesList || [])]
@@ -1052,20 +1175,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                       })}
                     </Box>
                   )}
-                  sx={{ mb: 1 }}
+                  sx={{ mb: 2.5 }}
                 />
-
-                {petEntries[0].selectedServices.length > 0 && (
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, p: 1, bgcolor: COLORS.cream, border: `1px solid ${COLORS.borderLight}`, borderRadius: 0 }}>
-                    <Typography sx={{ fontWeight: 900, fontSize: '0.75rem', color: COLORS.textMuted, textTransform: 'uppercase' }}>Estimated Total</Typography>
-                    <Typography sx={{ fontWeight: 900, fontSize: '0.85rem', color: COLORS.brand }}>
-                      ₱{petEntries[0].selectedServices.reduce((sum, svcName) => {
-                        const s = servicesList?.find(item => item.name === svcName);
-                        return sum + (resolveTieredPrice(s, parseFloat(petEntries[0].weight) || null) || 0);
-                      }, 0).toLocaleString()}
-                    </Typography>
-                  </Box>
-                )}
 
                 <TextField
                   label="REASON FOR VISIT"
@@ -1077,8 +1188,40 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
                   value={petEntries[0].triageNotes}
                   onChange={e => updateEntry(0, { triageNotes: e.target.value })}
                   inputProps={{ style: { fontWeight: 900, fontSize: '0.85rem' } }}
-                  sx={sxField}
+                  sx={{ ...sxField, mb: 3 }}
                 />
+
+                {petEntries[0].selectedServices.length > 0 && (
+                  <Box sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    p: 2, 
+                    bgcolor: 'rgba(0,0,0,0.03)', 
+                    border: '2px solid #1a1a1a', 
+                    borderRadius: 0,
+                    position: 'relative'
+                  }}>
+                    <Box>
+                      <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', color: COLORS.textMuted, textTransform: 'uppercase', mb: 0.5 }}>ESTIMATED TOTAL</Typography>
+                      <Typography sx={{ fontWeight: 1000, fontSize: '1.2rem', color: COLORS.brand }}>
+                        ₱{petEntries[0].selectedServices.reduce((sum, svcName) => {
+                          const s = servicesList?.find(item => item.name === svcName);
+                          return sum + (resolveTieredPrice(s, parseFloat(petEntries[0].weight) || null) || 0);
+                        }, 0).toLocaleString()}
+                      </Typography>
+                    </Box>
+
+                    <Box sx={{ textAlign: 'right' }}>
+                      <Typography sx={{ fontWeight: 900, fontSize: '0.7rem', color: COLORS.textMuted, textTransform: 'uppercase', mb: 0.5 }}>ESTIMATED DURATION</Typography>
+                      <Typography sx={{ fontWeight: 1000, fontSize: '1.2rem', color: COLORS.accent }}>
+                        {petEntries[0].selectedServices.reduce((sum, svcName) => {
+                          const s = servicesList?.find(item => item.name === svcName);
+                          return sum + (parseInt(s?.duration) || 0);
+                        }, 0)} MINS
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
               </Paper>
             </Box>
           </Box>

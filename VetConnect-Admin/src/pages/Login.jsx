@@ -1,14 +1,15 @@
 // The split-screen entryway. Blocks mobile clients from accessing the admin panel.
 
 import React, { useState } from 'react';
-import { 
-  Box, Typography, Paper, TextField, Button, IconButton, 
-  InputAdornment, CircularProgress, Alert, Fade, Avatar, Divider 
+import {
+  Box, Typography, Paper, TextField, Button, IconButton,
+  InputAdornment, CircularProgress, Alert, Fade, Divider
 } from '@mui/material';
 import { COLORS, PANEL } from '../theme/designTokens';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import clinicLogo from '../assets/clinic_logo.png';
 
 // Icons
 import Visibility from '@mui/icons-material/Visibility';
@@ -144,9 +145,12 @@ export default function Login() {
         <PetsIcon sx={{ position: 'absolute', fontSize: 800, color: 'rgba(255,255,255,0.03)', right: -200, bottom: -200 }} />
         
         <Box sx={{ zIndex: 1, textAlign: 'center' }}>
-            <Avatar sx={{ bgcolor: 'white', width: 80, height: 80, mb: 3, mx: 'auto', boxShadow: `4px 4px 0px ${COLORS.brand}` }}>
-                <PetsIcon sx={{ fontSize: 45, color: COLORS.accentWarm }} />
-            </Avatar>
+            <Box
+              component="img"
+              src={clinicLogo}
+              alt="Starbarks Veterinary Clinic"
+              sx={{ width: 100, height: 100, mb: 3, mx: 'auto', display: 'block', borderRadius: '50%' }}
+            />
             <Typography variant="h2" fontWeight="900" color="white" gutterBottom sx={{ letterSpacing: -1 }}>
                 VetConnect
             </Typography>

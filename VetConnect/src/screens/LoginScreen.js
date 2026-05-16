@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -134,6 +135,13 @@ const LoginScreen = ({ navigation }) => {
           <View style={styles.formContainer}>
             <View style={styles.formShadow} />
             <View style={styles.formBox}>
+            <View style={styles.logoWrap}>
+              <Image
+                source={require('../../assets/images/starbarks_logo.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
             <Text style={styles.label}>Email Address</Text>
             <TextInput
               placeholder="juan@example.com"
@@ -325,6 +333,9 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "#3E2723",
   },
+
+  logoWrap: { alignItems: "center", marginBottom: 18 },
+  logo: { width: 80, height: 80 },
 
   label: {
     fontWeight: "900",

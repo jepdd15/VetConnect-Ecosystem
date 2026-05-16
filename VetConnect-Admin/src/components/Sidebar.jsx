@@ -10,6 +10,9 @@ import { FONT, COLORS } from '../theme/designTokens';
 // Context
 import { useUser } from '../context/UserContext';
 
+// Brand
+import clinicLogo from '../assets/clinic_logo.png';
+
 
 // Icons
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -107,7 +110,12 @@ export default function Sidebar({ onLogout, lowStockCount = 0 }) {
         }}
       >
         <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 1.5, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <PetsIcon sx={{ color: COLORS.cta }} />
+          <Box
+            component="img"
+            src={clinicLogo}
+            alt="Starbarks"
+            sx={{ width: 40, height: 40, display: 'block', borderRadius: '50%' }}
+          />
           <Typography variant="h6" sx={{ fontFamily: FONT, fontWeight: 'bold' }}>VetConnect</Typography>
         </Box>
 

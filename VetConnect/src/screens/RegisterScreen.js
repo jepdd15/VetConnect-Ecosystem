@@ -17,6 +17,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -443,6 +444,14 @@ const RegisterScreen = ({ navigation }) => {
           <View style={styles.formContainer}>
             <View style={styles.formShadow} />
             <View style={styles.formBox}>
+              <View style={styles.logoWrap}>
+                <Image
+                  source={require('../../assets/images/starbarks_logo.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+              </View>
+
               {/* ====== SECTION: ACCOUNT ====== */}
               <Text style={styles.sectionLabel}>ACCOUNT</Text>
 
@@ -797,6 +806,9 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "#3E2723",
   },
+
+  logoWrap: { alignItems: "center", marginBottom: 18 },
+  logo: { width: 80, height: 80 },
 
   label: {
     fontWeight: "900",

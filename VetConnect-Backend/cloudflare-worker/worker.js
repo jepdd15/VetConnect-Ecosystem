@@ -134,20 +134,24 @@ function buildWorkerEmailHtml(title, body) {
 
 /**
  * Dynamic CORS resolver.
- * Allows localhost during development and your production domain.
+ * Allows localhost during development and the production Firebase Hosting URLs
+ * (both .web.app and .firebaseapp.com aliases). Unknown origins receive no
+ * Access-Control-Allow-Origin header, so the browser blocks the request.
+ * Non-browser callers (React Native, curl) do not send Origin and are unaffected.
  */
 function getCorsHeaders(request) {
   const allowedOrigins = [
     'http://localhost:5173',
-    'https://vetconnect-admin.web.app', // Update this to your real production URL
+    'https://starbarks-vetconnect-f6443.web.app',
+    'https://starbarks-vetconnect-f6443.firebaseapp.com',
   ];
   const origin = request.headers.get('Origin');
-  const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  const allowOrigin = allowedOrigins.includes(origin) ? origin : null;
 
   return {
-    'Access-Control-Allow-Origin':  allowOrigin,
+    ...(allowOrigin ? { 'Access-Control-Allow-Origin': allowOrigin } : {}),
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-vc-key',
   };
 }
 
@@ -550,34 +554,39 @@ async function handleVaccineReminders(env) {
     }
 
     try {
-      await fetch('https://exp.host/--/api/v2/push/send', {
+      // ── Push (check .ok so failures don't masquerade as success) ─────────
+      // Mirrors the appointment cron pattern: track pushOk, then still attempt
+      // email below so a broken push token doesn't silently block the email
+      // backup channel. Cooldown only stamps if at least one channel attempted.
+      let pushOk = false;
+      const pushRes = await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to: pushToken, title, body, sound: 'default', data: { type: 'vaccine-reminder' } }),
       });
+      if (pushRes.ok) {
+        pushOk = true;
+        fetch(`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/notification_log?key=${FIREBASE_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: {
+            ownerId: { stringValue: ownerId }, ownerName: { stringValue: ownerName },
+            status: { stringValue: templateKey }, petName: { stringValue: petName },
+            title: { stringValue: title }, body: { stringValue: body },
+            sentAt: { timestampValue: new Date().toISOString() },
+            sentBy: { stringValue: 'System (Vaccine Cron)' },
+            channel: { stringValue: 'push' }, type: { stringValue: 'vaccine-reminder' },
+          } }),
+        }).catch(err => console.error('[VaccineReminders/log] push log write failed:', err?.message));
+      } else {
+        console.error(`[VaccineReminders] Expo push failed for ${docName}: HTTP ${pushRes.status}`);
+      }
 
-      await fetch(`https://firestore.googleapis.com/v1/${docName}?key=${FIREBASE_API_KEY}&updateMask.fieldPaths=lastReminderSentAt`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: { lastReminderSentAt: { timestampValue: new Date().toISOString() } } }),
-      });
-
-      fetch(`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/notification_log?key=${FIREBASE_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: {
-          ownerId: { stringValue: ownerId }, ownerName: { stringValue: ownerName },
-          status: { stringValue: templateKey }, petName: { stringValue: petName },
-          title: { stringValue: title }, body: { stringValue: body },
-          sentAt: { timestampValue: new Date().toISOString() },
-          sentBy: { stringValue: 'System (Vaccine Cron)' },
-          channel: { stringValue: 'push' }, type: { stringValue: 'vaccine-reminder' },
-        } }),
-      }).catch(() => {});
-
-      // ── Email fallback (fire-and-forget) ──────────────────────────────────
+      // ── Email fallback (fire-and-forget, independent of push outcome) ────
+      let emailAttempted = false;
       const ownerEmail = fields.ownerEmail?.stringValue;
       if (emailEnabled && ownerEmail && env.RESEND_API_KEY) {
+        emailAttempted = true;
         fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.RESEND_API_KEY}` },
@@ -587,7 +596,11 @@ async function handleVaccineReminders(env) {
             subject: title,
             html: buildWorkerEmailHtml(title, body),
           }),
-        }).then(() => {
+        }).then(res => {
+          if (!res.ok) {
+            console.error(`[VaccineReminders] Resend rejected for ${docName}: HTTP ${res.status}`);
+            return;
+          }
           fetch(`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/notification_log?key=${FIREBASE_API_KEY}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -599,12 +612,23 @@ async function handleVaccineReminders(env) {
               sentBy: { stringValue: 'System (Vaccine Cron)' },
               channel: { stringValue: 'email' }, type: { stringValue: 'vaccine-reminder' },
             } }),
-          }).catch(() => {});
-        }).catch(() => {});
+          }).catch(err => console.error('[VaccineReminders/log] email log write failed:', err?.message));
+        }).catch(err => console.error('[VaccineReminders] Resend network error:', err?.message));
       }
       // NOTE: Vaccine reminders do NOT send SMS — not in critical statuses set.
 
-      sent++;
+      // ── Stamp cooldown only if at least one channel attempted delivery ────
+      // If both push failed AND no email configured, retry on next cron run.
+      if (pushOk || emailAttempted) {
+        await fetch(`https://firestore.googleapis.com/v1/${docName}?key=${FIREBASE_API_KEY}&updateMask.fieldPaths=lastReminderSentAt`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: { lastReminderSentAt: { timestampValue: new Date().toISOString() } } }),
+        });
+        sent++;
+      } else {
+        failed++;
+      }
     } catch (err) { console.error(`Failed for ${docName}:`, err.message); failed++; }
   }
 
@@ -668,10 +692,12 @@ async function handleAppointmentReminders(env) {
 
     if (dayDiff < 0) { skipped++; continue; }
 
-    const rs = f.remindersSent?.mapValue?.fields || {};
-    const headsUpSent = !!rs.headsUp?.timestampValue;
-    const tomorrowSent = !!rs.tomorrow?.timestampValue;
-    const todaySent = !!rs.today?.timestampValue;
+    // Flat top-level fields (not nested in a remindersSent map) to avoid the
+    // Firestore REST updateMask + nested mapValue ambiguity where sub-keys can
+    // get wiped on partial updates. Each stage has its own field.
+    const headsUpSent  = !!f.remindersSentHeadsUp?.timestampValue;
+    const tomorrowSent = !!f.remindersSentTomorrow?.timestampValue;
+    const todaySent    = !!f.remindersSentToday?.timestampValue;
 
     const toSend = [];
     if (dayDiff === headsUpDays && !headsUpSent) {
@@ -718,9 +744,9 @@ async function handleAppointmentReminders(env) {
                   channel: { stringValue: 'push' }, type: { stringValue: 'appointment-reminder' },
                 },
               }),
-            }).catch(() => {});
+            }).catch(err => console.error('[ApptReminders/log] push log write failed:', err?.message));
           } else {
-            console.log(`[ApptReminders] Push failed ${appointmentId} ${stage}:`, pushRes.status);
+            console.error(`[ApptReminders] Expo push failed ${appointmentId} ${stage}: HTTP ${pushRes.status}`);
           }
         }
 
@@ -737,7 +763,11 @@ async function handleAppointmentReminders(env) {
               subject: title,
               html: buildWorkerEmailHtml(title, body),
             }),
-          }).then(() => {
+          }).then(res => {
+            if (!res.ok) {
+              console.error(`[ApptReminders] Resend rejected for ${appointmentId} ${stage}: HTTP ${res.status}`);
+              return;
+            }
             fetch(`${BASE}/notification_log?key=${API_KEY}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -750,8 +780,8 @@ async function handleAppointmentReminders(env) {
                 sentBy: { stringValue: 'System (Appointment Cron)' },
                 channel: { stringValue: 'email' }, type: { stringValue: 'appointment-reminder' },
               } }),
-            }).catch(() => {});
-          }).catch(() => {});
+            }).catch(err => console.error('[ApptReminders/log] email log write failed:', err?.message));
+          }).catch(err => console.error('[ApptReminders] Resend network error:', err?.message));
         }
 
         // ── SMS (critical stages only: tomorrow + today) ──────────────────────
@@ -772,7 +802,11 @@ async function handleAppointmentReminders(env) {
               message: smsMsg,
               sendername: env.SEMAPHORE_SENDER_NAME || 'CLINIC',
             }),
-          }).then(() => {
+          }).then(res => {
+            if (!res.ok) {
+              console.error(`[ApptReminders] Semaphore rejected for ${appointmentId} ${stage}: HTTP ${res.status}`);
+              return;
+            }
             fetch(`${BASE}/notification_log?key=${API_KEY}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -785,19 +819,22 @@ async function handleAppointmentReminders(env) {
                 sentBy: { stringValue: 'System (Appointment Cron)' },
                 channel: { stringValue: 'sms' }, type: { stringValue: 'appointment-reminder' },
               } }),
-            }).catch(() => {});
-          }).catch(() => {});
+            }).catch(err => console.error('[ApptReminders/log] sms log write failed:', err?.message));
+          }).catch(err => console.error('[ApptReminders] Semaphore network error:', err?.message));
         }
 
         // ── Mark stage sent if at least one channel delivered ─────────────────
+        // Writes a flat top-level field (remindersSentHeadsUp / Tomorrow / Today)
+        // instead of a nested map sub-key to keep updateMask semantics unambiguous.
         if (pushOk || emailAttempted) {
-          await fetch(`${BASE}/appointment_reminder_queue/${appointmentId}?key=${API_KEY}&updateMask.fieldPaths=remindersSent.${stage}&updateMask.fieldPaths=updatedAt`, {
+          const flatField = `remindersSent${stage[0].toUpperCase()}${stage.slice(1)}`;
+          await fetch(`${BASE}/appointment_reminder_queue/${appointmentId}?key=${API_KEY}&updateMask.fieldPaths=${flatField}&updateMask.fieldPaths=updatedAt`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               fields: {
-                remindersSent: { mapValue: { fields: { [stage]: { timestampValue: now } } } },
-                updatedAt: { timestampValue: now },
+                [flatField]: { timestampValue: now },
+                updatedAt:   { timestampValue: now },
               },
             }),
           });
@@ -954,7 +991,7 @@ async function handleBalanceReminders(env) {
                 type:      { stringValue: 'balance-reminder' },
               },
             }),
-          }).catch(() => {});
+          }).catch(err => console.error('[BalanceReminders/log] push log write failed:', err?.message));
           pushOk = true;
           sent++;
         }
@@ -982,7 +1019,11 @@ async function handleBalanceReminders(env) {
           subject: title,
           html:    buildWorkerEmailHtml(title, body),
         }),
-      }).then(() => {
+      }).then(res => {
+        if (!res.ok) {
+          console.error(`[BalanceReminders] Resend rejected for ${ownerName}: HTTP ${res.status}`);
+          return;
+        }
         fetch(`${BASE}/notification_log?key=${API_KEY}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1000,8 +1041,8 @@ async function handleBalanceReminders(env) {
               type:      { stringValue: 'balance-reminder' },
             },
           }),
-        }).catch(() => {});
-      }).catch(() => {});
+        }).catch(err => console.error('[BalanceReminders/log] email log write failed:', err?.message));
+      }).catch(err => console.error('[BalanceReminders] Resend network error:', err?.message));
     }
 
     // Stamp lastReminderSentAt on the QUEUE doc (not the user doc) after any send.
@@ -1017,7 +1058,7 @@ async function handleBalanceReminders(env) {
             fields: { lastReminderSentAt: { timestampValue: new Date().toISOString() } },
           }),
         },
-      ).catch(() => {});
+      ).catch(err => console.error('[BalanceReminders] cooldown stamp failed:', err?.message));
     }
   }
 
@@ -1028,6 +1069,18 @@ export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: getCorsHeaders(request) });
+    }
+
+    // Shared-secret auth. Gated on env var presence so the Worker can be
+    // deployed BEFORE admin + mobile callers are updated. To enforce, set
+    // WORKER_SHARED_SECRET in Cloudflare > Workers > Settings and update
+    // every client caller to send: x-vc-key: <same value>.
+    // Until the env var is set, requests are accepted as before.
+    if (env.WORKER_SHARED_SECRET) {
+      const providedKey = request.headers.get('x-vc-key');
+      if (providedKey !== env.WORKER_SHARED_SECRET) {
+        return jsonResponse(request, { error: 'Unauthorized.' }, 401);
+      }
     }
 
     const url = new URL(request.url);
@@ -1052,7 +1105,14 @@ export default {
       return handleSms(request, env);
     }
 
-    return handleAiProxy(request, env);
+    // AI proxy lives at root and /ai. Unknown paths return 404 instead of
+    // silently hitting Claude with arbitrary payloads — tightens attack surface
+    // and prevents accidental API spend on misrouted requests.
+    if (url.pathname === '/' || url.pathname === '/ai') {
+      return handleAiProxy(request, env);
+    }
+
+    return jsonResponse(request, { error: 'Not found.' }, 404);
   },
   async scheduled(event, env, ctx) {
     ctx.waitUntil(

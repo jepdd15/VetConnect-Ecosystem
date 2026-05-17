@@ -53,7 +53,7 @@ import { db, auth } from '../firebaseConfig';
 import { uploadAttachment } from '../utils/uploadAttachment';
 import { useInventory } from '../features/Inventory/hooks/useInventory';
 import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../utils/pulseUtils';
-import { createDefaultExam, examToText } from '../utils/examUtils';
+import { createDefaultExam, examToText, hasExamData } from '../utils/examUtils';
 import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useUser } from '../context/UserContext';
 import { chatWithHistory, buildUserMessage, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';

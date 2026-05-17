@@ -15,11 +15,9 @@
  *   ownerPhone: string,            // T4.135 — for SMS on tomorrow/today stages only
  *   scheduledDate: Timestamp,
  *   scheduledTime: string,         // e.g. "2:00 PM"
- *   remindersSent: {
- *     headsUp: Timestamp | null,
- *     tomorrow: Timestamp | null,
- *     today: Timestamp | null,
- *   },
+ *   remindersSentHeadsUp:  Timestamp | null,   // flat top-level fields (not a
+ *   remindersSentTomorrow: Timestamp | null,   // nested map) — avoids the
+ *   remindersSentToday:    Timestamp | null,   // updateMask wipe ambiguity.
  *   updatedAt: Timestamp,
  * }
  */
@@ -105,8 +103,9 @@ function getManilaToday() {
  * Called fire-and-forget on appointment confirmation.
  *
  * Skips walk-in appointments (ownerId falsy or sentinel value).
- * Preserves any existing remindersSent entries — does NOT clear them on write
- * (clearing happens explicitly on reschedule via updateAppointmentQueueDate).
+ * Preserves any existing reminder stamps (remindersSentHeadsUp/Tomorrow/Today)
+ * — does NOT clear them on write (clearing happens explicitly on reschedule
+ * via updateAppointmentQueueDate).
  *
  * @param {{ id: string, petName: string, ownerName: string, ownerId: string, scheduledDate: Timestamp }} appointment
  * @returns {Promise<void>}
@@ -122,13 +121,18 @@ export async function writeAppointmentQueueDoc(appointment) {
   const schDate      = toDate(appointment.scheduledDate);
   const scheduledTime = formatTime(schDate);
 
-  // Preserve any existing remindersSent — re-writing on confirmation must not
+  // Preserve any existing reminder stamps — re-writing on confirmation must not
   // reset stages that were already stamped (e.g. headsUp sent, then vet confirms a change).
-  let existingRemindersSent = { headsUp: null, tomorrow: null, today: null };
+  let existing = { headsUp: null, tomorrow: null, today: null };
   try {
-    const existing = await getDoc(doc(db, 'appointment_reminder_queue', appointment.id));
-    if (existing.exists()) {
-      existingRemindersSent = existing.data().remindersSent || existingRemindersSent;
+    const existingSnap = await getDoc(doc(db, 'appointment_reminder_queue', appointment.id));
+    if (existingSnap.exists()) {
+      const d = existingSnap.data();
+      existing = {
+        headsUp:  d.remindersSentHeadsUp  || null,
+        tomorrow: d.remindersSentTomorrow || null,
+        today:    d.remindersSentToday    || null,
+      };
     }
   } catch { /* silent — treat as no prior doc */ }
 
@@ -144,8 +148,10 @@ export async function writeAppointmentQueueDoc(appointment) {
       ? appointment.scheduledDate
       : Timestamp.fromDate(schDate),
     scheduledTime,
-    remindersSent:  existingRemindersSent,
-    updatedAt:      Timestamp.now(),
+    remindersSentHeadsUp:  existing.headsUp,
+    remindersSentTomorrow: existing.tomorrow,
+    remindersSentToday:    existing.today,
+    updatedAt: Timestamp.now(),
   });
 }
 
@@ -169,8 +175,9 @@ export async function removeAppointmentQueueDoc(appointmentId) {
 // ── Public: Update date on reschedule ────────────────────────────────────────
 
 /**
- * Updates the queue doc with a new scheduled date and clears all remindersSent
- * stages to null. Re-resolves the push token in case it changed.
+ * Updates the queue doc with a new scheduled date and clears all 3 reminder
+ * stamps (remindersSentHeadsUp/Tomorrow/Today) to null. Re-resolves the push
+ * token in case it changed.
  *
  * Called fire-and-forget after a reschedule transaction commits.
  *
@@ -203,9 +210,11 @@ export async function updateAppointmentQueueDate(appointmentId, newScheduledDate
       ? newScheduledDate
       : Timestamp.fromDate(schDate),
     scheduledTime,
-    // Clearing remindersSent ensures all 3 stages can fire for the new date.
-    remindersSent: { headsUp: null, tomorrow: null, today: null },
-    updatedAt:     Timestamp.now(),
+    // Clearing all 3 reminder stamps ensures every stage can fire for the new date.
+    remindersSentHeadsUp:  null,
+    remindersSentTomorrow: null,
+    remindersSentToday:    null,
+    updatedAt: Timestamp.now(),
   });
 }
 
@@ -219,8 +228,9 @@ export async function updateAppointmentQueueDate(appointmentId, newScheduledDate
  *   - tomorrow → dayDiff === 1
  *   - today    → dayDiff === 0
  *
- * On a successful send, stamps the stage in remindersSent and logs to
- * notification_log. Returns a summary object.
+ * On a successful send, stamps the stage's flat field
+ * (remindersSentHeadsUp/Tomorrow/Today) and logs to notification_log.
+ * Returns a summary object.
  *
  * Used by the Dashboard "Send Reminders" button.
  * The Cloudflare Worker Cron uses the same logic in Worker JS (Part 5).
@@ -277,17 +287,16 @@ export async function sendAppointmentRemindersFromQueue(clinicSettings = {}, sta
 
     const dayDiff = getDayDiff(entry.scheduledDate, today);
 
-    // Build list of stages to fire for this entry
-    const rs       = entry.remindersSent || {};
-    const toSend   = [];
+    // Build list of stages to fire for this entry — reads flat top-level fields.
+    const toSend = [];
 
-    if (dayDiff === headsUpDays && !rs.headsUp) {
+    if (dayDiff === headsUpDays && !entry.remindersSentHeadsUp) {
       toSend.push({ stage: 'headsUp', templateKey: 'appointment-upcoming', days: String(dayDiff) });
     }
-    if (dayDiff === 1 && !rs.tomorrow) {
+    if (dayDiff === 1 && !entry.remindersSentTomorrow) {
       toSend.push({ stage: 'tomorrow', templateKey: 'appointment-tomorrow', days: '1' });
     }
-    if (dayDiff === 0 && !rs.today) {
+    if (dayDiff === 0 && !entry.remindersSentToday) {
       toSend.push({ stage: 'today', templateKey: 'appointment-today', days: '0' });
     }
 
@@ -321,10 +330,11 @@ export async function sendAppointmentRemindersFromQueue(clinicSettings = {}, sta
         });
         if (!pushRes.ok) throw new Error(`Worker responded ${pushRes.status}`);
 
-        // Stamp the stage so it does not fire again
+        // Stamp the stage so it does not fire again — writes a flat top-level field.
+        const flatField = `remindersSent${stage[0].toUpperCase()}${stage.slice(1)}`;
         await setDoc(
           doc(db, 'appointment_reminder_queue', entry.id),
-          { remindersSent: { ...rs, [stage]: Timestamp.now() }, updatedAt: Timestamp.now() },
+          { [flatField]: Timestamp.now(), updatedAt: Timestamp.now() },
           { merge: true },
         );
 

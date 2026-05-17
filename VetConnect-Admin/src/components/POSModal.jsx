@@ -22,6 +22,8 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 
 import { doc, getDoc, collection, runTransaction, Timestamp, updateDoc, increment, arrayUnion, getDocs, query, where } from 'firebase/firestore';
+import { buildPaymentDocPayload } from '../utils/paymentUtils';
+import { isRefNumberRequired, PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '../constants/paymentMethods';
 import { COLORS, FONT } from '../theme/designTokens';
 import { db } from '../firebaseConfig';
 import { useUser } from '../context/UserContext';
@@ -60,10 +62,11 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const { profile } = useUser();
   const clinicSettings = useClinicSettings();
   const [cart, setCart] = useState([]);
-  // T4.150: Multi-tender state — array of { method, amount, amountTendered }.
+  // T4.150: Multi-tender state — array of { method, amount, amountTendered, referenceNumber }.
   // Default: one Cash tender for the full balance. Replaces single paymentMethod + amountTendered.
+  // T4.237: referenceNumber added — required for GCash/Maya/Bank/Check tenders (D3).
   const [paymentTenders, setPaymentTenders] = useState([
-    { method: 'Cash', amount: '', amountTendered: '' }
+    { method: 'cash', amount: '', amountTendered: '', referenceNumber: '' }
   ]);
   const [applyScPwd, setApplyScPwd] = useState(false);
   const[hasScId, setHasScId] = useState(false);
@@ -104,7 +107,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
   // T4.150: Derive the legacy paymentMethod (largest tender by amount) for backward compat.
   const primaryPaymentMethod = useMemo(() => {
-    if (paymentTenders.length === 0) return 'Cash';
+    if (paymentTenders.length === 0) return 'cash';
     if (paymentTenders.length === 1) return paymentTenders[0].method;
     const sorted = [...paymentTenders].sort((a, b) =>
       (parseFloat(b.amount) || 0) - (parseFloat(a.amount) || 0)
@@ -117,7 +120,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     const currentBalance = parseFloat(financials?.balanceDue) || 0;
     setPaymentTenders(prev => {
       const next = [...prev];
-      if (field === 'method' && value !== 'Cash') {
+      if (field === 'method' && value !== 'cash') {
         next[index] = { ...next[index], [field]: value, amountTendered: '' };
       } else {
         next[index] = { ...next[index], [field]: value };
@@ -140,8 +143,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   const addTender = () => {
     // Pick first unused method, defaulting to GCash.
     const usedMethods = new Set(paymentTenders.map(t => t.method));
-    const available = ['GCash', 'Cash', 'Card', 'Bank Transfer'].find(m => !usedMethods.has(m)) || 'GCash';
-    setPaymentTenders(prev => [...prev, { method: available, amount: '', amountTendered: '' }]);
+    const available = PAYMENT_METHODS.find(m => !usedMethods.has(m)) || 'gcash';
+    setPaymentTenders(prev => [...prev, { method: available, amount: '', amountTendered: '', referenceNumber: '' }]);
   };
 
   const removeTender = (index) => {
@@ -251,7 +254,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       if (open && patient) {
         const initialCart = buildCartForAppointment(patient);
 
-        setCart(initialCart); setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
+        setCart(initialCart); setPaymentTenders([{ method: 'cash', amount: '', amountTendered: '', referenceNumber: '' }]);
         setDepositAmount(patient.depositPaid ? patient.depositPaid.toString() : '');
         setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
         // T4.151/T4.152: Reset success overlay state on every modal open.
@@ -268,7 +271,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
       }
 
       if (open && isRetailMode) {
-        setCart([]); setPaymentTenders([{ method: 'Cash', amount: '', amountTendered: '' }]);
+        setCart([]); setPaymentTenders([{ method: 'cash', amount: '', amountTendered: '', referenceNumber: '' }]);
         setDepositAmount('');
         setItemDiscounts({}); setBillDiscountType('%'); setBillDiscountValue(''); setBillDiscountReason('');
         setCheckoutSuccess(null); setCheckoutError(''); setEmailFeedback('');
@@ -424,14 +427,14 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
   // Per-Cash-tender insufficiency: true if any Cash tender has amountTendered < its amount.
   const anyCashInsufficient = paymentTenders.some(t =>
-    t.method === 'Cash'
+    t.method === 'cash'
     && t.amountTendered !== ''
     && (parseFloat(t.amountTendered) || 0) < (parseFloat(t.amount) || balanceDueNum)
   );
 
   // Helper: compute change due for a single Cash tender row.
   const getChangeDue = (tender) => {
-    if (tender.method !== 'Cash') return 0;
+    if (tender.method !== 'cash') return 0;
     const tendered = parseFloat(tender.amountTendered) || 0;
     const amt = parseFloat(tender.amount) || balanceDueNum;
     return Math.max(0, tendered - amt);
@@ -460,8 +463,9 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     const tenderSection = (() => {
       return paymentTenders.map(t => {
         const amt = parseFloat(t.amount) || balanceDueNum;
-        let line = `<div class="total-row"><span>${esc(t.method)}:</span><span>₱${amt.toFixed(2)}</span></div>`;
-        if (t.method === 'Cash' && t.amountTendered && parseFloat(t.amountTendered) > 0) {
+        const label = PAYMENT_METHOD_LABELS[t.method] || t.method;
+        let line = `<div class="total-row"><span>${esc(label)}:</span><span>₱${amt.toFixed(2)}</span></div>`;
+        if (t.method === 'cash' && t.amountTendered && parseFloat(t.amountTendered) > 0) {
           const tendered = parseFloat(t.amountTendered);
           const change = Math.max(0, tendered - amt);
           line += `<div class="total-row sub-row"><span>&nbsp;&nbsp;Tendered:</span><span>₱${tendered.toFixed(2)}</span></div>`;
@@ -574,8 +578,9 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
     const tenderSection = (() => {
       return paymentTenders.map(t => {
         const amt = parseFloat(t.amount) || balanceDueNum;
-        let line = `<div class="total-row"><span>${esc(t.method)}:</span><span>₱${amt.toFixed(2)}</span></div>`;
-        if (t.method === 'Cash' && t.amountTendered && parseFloat(t.amountTendered) > 0) {
+        const label = PAYMENT_METHOD_LABELS[t.method] || t.method;
+        let line = `<div class="total-row"><span>${esc(label)}:</span><span>₱${amt.toFixed(2)}</span></div>`;
+        if (t.method === 'cash' && t.amountTendered && parseFloat(t.amountTendered) > 0) {
           const tendered = parseFloat(t.amountTendered);
           const change = Math.max(0, tendered - amt);
           line += `<div class="total-row sub-row"><span>&nbsp;&nbsp;Tendered:</span><span>₱${tendered.toFixed(2)}</span></div>`;
@@ -936,7 +941,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         };
 
         // 2d. T4.150: Cash audit fields — aggregate across all Cash tenders for backward compat.
-        const cashTenders = paymentTenders.filter(t => t.method === 'Cash' && t.amountTendered !== '');
+        const cashTenders = paymentTenders.filter(t => t.method === 'cash' && t.amountTendered !== '');
         const totalCashTendered = cashTenders.reduce((s, t) => s + (parseFloat(t.amountTendered) || 0), 0);
         const totalCashChange = cashTenders.reduce((s, t) => s + getChangeDue(t), 0);
         const cashAuditFields = {
@@ -973,7 +978,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             paymentTenders: paymentTenders.map(t => ({
               method: t.method,
               amount: parseFloat(t.amount) || (paymentTenders.length === 1 ? balanceDueNum : 0),
-              ...(t.method === 'Cash' && t.amountTendered ? {
+              ...(t.method === 'cash' && t.amountTendered ? {
                 amountTendered: parseFloat(t.amountTendered),
                 changeDue: getChangeDue(t),
               } : {}),
@@ -1032,7 +1037,27 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         // 3c. Sale document.
         transaction.set(saleRef, salePayload);
 
-        // 3d. Appointment status updates (completed + clinicalPulse).
+        // 3d. T4.237: Write one payment doc per tender inside the same transaction.
+        // Each doc is immutable (Firestore rules: update/delete blocked). Corrections
+        // via reversal pattern (negative-amount doc with reversalOf FK) — see Day 2.
+        for (const t of paymentTenders) {
+          const tenderAmount = parseFloat(t.amount) || (paymentTenders.length === 1 ? balanceDueNum : 0);
+          if (tenderAmount <= 0) continue;
+          const paymentRef = doc(collection(db, 'payments'));
+          transaction.set(paymentRef, buildPaymentDocPayload({
+            saleId: saleRef.id,
+            ownerId: patient.ownerId || null,
+            amount: tenderAmount,
+            method: t.method.toLowerCase(),
+            referenceNumber: t.referenceNumber || null,
+            note: null,
+            collectedBy: profile?.fullName || 'POS Cashier',
+            collectedByUid: profile?.id || null,
+            reversalOf: null,
+          }));
+        }
+
+        // 3e. Appointment status updates (completed + clinicalPulse).
         appointmentUpdateFn(transaction);
 
         // T2.101: outstandingBalance is now computed from sales (sum of balanceRemaining),
@@ -1142,7 +1167,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             : null,
         };
 
-        const cashTenders = paymentTenders.filter(t => t.method === 'Cash' && t.amountTendered !== '');
+        const cashTenders = paymentTenders.filter(t => t.method === 'cash' && t.amountTendered !== '');
         const totalCashTendered = cashTenders.reduce((s, t) => s + (parseFloat(t.amountTendered) || 0), 0);
         const totalCashChange = cashTenders.reduce((s, t) => s + getChangeDue(t), 0);
         const cashAuditFields = {
@@ -1172,7 +1197,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           paymentTenders: paymentTenders.map(t => ({
             method: t.method,
             amount: parseFloat(t.amount) || (paymentTenders.length === 1 ? balanceDueNum : 0),
-            ...(t.method === 'Cash' && t.amountTendered ? {
+            ...(t.method === 'cash' && t.amountTendered ? {
               amountTendered: parseFloat(t.amountTendered),
               changeDue: getChangeDue(t),
             } : {}),
@@ -1194,6 +1219,24 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         if (!counterSnap.exists()) { transaction.set(counterRef, { value: 1 }); }
         else { transaction.update(counterRef, { value: nextSeq }); }
         transaction.set(saleRef, salePayload);
+
+        // T4.237: Write one payment doc per tender inside the same transaction (retail path).
+        for (const t of paymentTenders) {
+          const tenderAmount = parseFloat(t.amount) || (paymentTenders.length === 1 ? balanceDueNum : 0);
+          if (tenderAmount <= 0) continue;
+          const paymentRef = doc(collection(db, 'payments'));
+          transaction.set(paymentRef, buildPaymentDocPayload({
+            saleId: saleRef.id,
+            ownerId: clientInfo?.id || null,
+            amount: tenderAmount,
+            method: t.method.toLowerCase(),
+            referenceNumber: t.referenceNumber || null,
+            note: null,
+            collectedBy: profile?.fullName || 'POS Cashier',
+            collectedByUid: profile?.id || null,
+            reversalOf: null,
+          }));
+        }
 
         return saleRef.id;
       });
@@ -1650,10 +1693,9 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                          onChange={(e) => updateTender(idx, 'method', e.target.value)}
                          sx={{ borderRadius: 0, fontWeight: 900, fontSize: '0.8rem' }}
                        >
-                         <MenuItem value="Cash">Cash</MenuItem>
-                         <MenuItem value="GCash">GCash / Maya</MenuItem>
-                         <MenuItem value="Card">Credit / Debit Card</MenuItem>
-                         <MenuItem value="Bank Transfer">Bank Transfer</MenuItem>
+                         {PAYMENT_METHODS.map(m => (
+                           <MenuItem key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</MenuItem>
+                         ))}
                        </Select>
                      </FormControl>
                      <TextField
@@ -1682,7 +1724,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                    </Box>
 
                    {/* Cash-specific: Amount Tendered + Change Due */}
-                   {tender.method === 'Cash' && (
+                   {tender.method === 'cash' && (
                      <Box sx={{ mt: 0.5 }}>
                        <TextField
                          fullWidth size="small" label="Amount Tendered"
@@ -1724,6 +1766,24 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                          </Box>
                        )}
                      </Box>
+                   )}
+
+                   {/* T4.237 D3: Reference number — required for GCash/Maya/Bank/Check */}
+                   {isRefNumberRequired(tender.method) && (
+                     <TextField
+                       fullWidth size="small"
+                       label="Reference Number"
+                       placeholder="e.g. GCash transaction ID"
+                       value={tender.referenceNumber || ''}
+                       onChange={(e) => updateTender(idx, 'referenceNumber', e.target.value)}
+                       error={!tender.referenceNumber?.trim()}
+                       helperText={
+                         !tender.referenceNumber?.trim()
+                           ? `Required for ${PAYMENT_METHOD_LABELS[tender.method] || tender.method}`
+                           : ''
+                       }
+                       sx={{ bgcolor: COLORS.cardBg, borderRadius: 0 }}
+                     />
                    )}
                  </Box>
                ))}
@@ -1851,7 +1911,14 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                     handleCheckout();
                   }
                 }}
-                disabled={loading || remaining > 0.005 || anyCashInsufficient || (parseFloat(billDiscountValue) > 0 && !billDiscountReason)}
+                disabled={
+                  loading
+                  || remaining > 0.005
+                  || anyCashInsufficient
+                  || (parseFloat(billDiscountValue) > 0 && !billDiscountReason)
+                  // T4.237 D3: Block checkout when a non-Cash tender is missing a reference number
+                  || paymentTenders.some(t => isRefNumberRequired(t.method) && !t.referenceNumber?.trim())
+                }
                 variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', borderRadius: 0, boxShadow: `4px 4px 0px ${COLORS.brand}` }}
               >
                 {loading ? "Processing..." : `Settle Balance (₱${financials.balanceDue})`}

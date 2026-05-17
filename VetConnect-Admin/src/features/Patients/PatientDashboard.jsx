@@ -95,6 +95,10 @@ import { useVaccineCatalog } from '../../hooks/useVaccineCatalog';
 // T4.13: Real-time problem list for persistent condition tracking.
 import { useProblemList } from '../../hooks/useProblemList';
 
+// ── Payment Actions Hook ─────────────────────────────────────────
+// T4.237 Day 3: Extracted from inline state/handlers — shared with Patients.jsx.
+import { usePaymentActions } from './hooks/usePaymentActions';
+
 // ── Modals ──────────────────────────────────────────────────────
 import ReferralModal from './components/ReferralModal';
 import WalkInModal from '../Queue/WalkInModal';
@@ -102,7 +106,6 @@ import AmendmentDialog from '../../components/AmendmentDialog';
 import SendNotificationDialog from '../../components/SendNotificationDialog';
 import PetHistoryAIDrawer from './components/PetHistoryAIDrawer';
 import { resolveDepartmentForRecord } from '../../utils/resolveDepartmentForRecord';
-import { computeSingleOwnerBalanceReminder } from '../../utils/computeBalanceReminderQueue';
 import { formatDosage } from '../../constants/dosageUnits';
 
 // ── Species-normal vital reference ranges ────────────────────────
@@ -294,21 +297,16 @@ export default function PatientDashboard() {
   const [printMenuRecord, setPrintMenuRecord] = useState(null);
   // T2.101: Owner sales for computed outstanding balance
   const [ownerSales, setOwnerSales] = useState([]);
-  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
   // T2.457: Case-day linkage map — recordId -> { caseDay, totalDays }
   const [caseDayMap, setCaseDayMap] = useState({});
-  const [recordPaymentTarget, setRecordPaymentTarget] = useState(null);
-  const [recordPaymentAmount, setRecordPaymentAmount] = useState('');
   // T2.458: Quick-book (WalkIn) modal state
   const [quickBookOpen, setQuickBookOpen] = useState(false);
   const [servicesList, setServicesList] = useState([]);
   const [deptsList, setDeptsList] = useState([]);
-  // T2.129: Generic error snackbar
-  const [errorSnack, setErrorSnack] = useState('');
   // T4.147: Generic success snackbar (snooze confirmation, etc.)
   const [successSnack, setSuccessSnack] = useState('');
-  // T4.147: Mark as Settled dialog target — the sale object to settle
-  const [settleTarget, setSettleTarget] = useState(null);
+  // localErrorSnack: for non-payment errors (snooze, exempt, pin). Payment errors use paymentActions.errorSnack.
+  const [localErrorSnack, setLocalErrorSnack] = useState('');
 
 
   // T3.101: Vaccine exemption dialog
@@ -362,6 +360,10 @@ export default function PatientDashboard() {
   const [llmConfig, setLlmConfig] = useState({ enabled: false, workerUrl: '' });
 
   const clinicSettings = useClinicSettings();
+
+  // T4.237 Day 3: Payment action hook — manages all payment state, handlers, and dialogs.
+  // profile and clinicSettings are read internally by the hook.
+  const paymentActions = usePaymentActions({ owner, ownerSales, setOwnerSales });
 
   const buildStaffLookup = async (records) => {
     const lookup = new Map();
@@ -1240,81 +1242,8 @@ export default function PatientDashboard() {
 
   const toggleYear = (year) => setCollapsedYears(p => { const n = new Set(p); n.has(year) ? n.delete(year) : n.add(year); return n; });
 
-  // T2.101: Record a partial payment against an outstanding sale balance.
-  // T4.147: Also syncs hasOutstandingBalance on the owner doc after payment.
-  const handleRecordPayment = async () => {
-    const amount = parseFloat(recordPaymentAmount);
-    if (!recordPaymentTarget || isNaN(amount) || amount <= 0) return;
-    try {
-      const newBalance = Math.max(0, (recordPaymentTarget.balanceRemaining || 0) - amount);
-      await updateDoc(doc(db, 'sales', recordPaymentTarget.id), { balanceRemaining: newBalance });
-      const updatedSales = ownerSales.map(s =>
-        s.id === recordPaymentTarget.id ? { ...s, balanceRemaining: newBalance } : s
-      );
-      setOwnerSales(updatedSales);
-      setRecordPaymentOpen(false);
-      setRecordPaymentTarget(null);
-      setRecordPaymentAmount('');
-
-      if (owner?.id) {
-        const remainingDebt = updatedSales
-          .filter(s => s.status !== 'refunded' && s.status !== 'voided')
-          .reduce((sum, s) => sum + (s.balanceRemaining || 0), 0);
-        await updateDoc(doc(db, 'users', owner.id), {
-          hasOutstandingBalance: remainingDebt > 0,
-        });
-      }
-    } catch (e) {
-      console.error('[PatientDashboard.handleRecordPayment]:', e.message);
-      setErrorSnack('Failed to record payment: ' + e.message);
-    }
-  };
-
-  // T4.147: Mark a sale as settled externally (off-POS payment — GCash, bank transfer, etc.).
-  // Writes an audit trail so the forensic ledger distinguishes POS vs. external settlements.
-  const handleMarkSettled = async () => {
-    if (!settleTarget) return;
-    try {
-      const staffName = profile
-        ? `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || profile.fullName || 'Staff'
-        : 'Staff';
-      await updateDoc(doc(db, 'sales', settleTarget.id), {
-        balanceRemaining: 0,
-        settledExternally: true,
-        settledBy: staffName,
-        settledAt: Timestamp.now(),
-      });
-      let updatedSales;
-      setOwnerSales(prev => {
-        updatedSales = prev.map(s =>
-          s.id === settleTarget.id ? { ...s, balanceRemaining: 0, settledExternally: true, settledBy: staffName, settledAt: new Date() } : s
-        );
-        return updatedSales;
-      });
-      setSettleTarget(null);
-
-      if (owner?.id && updatedSales) {
-        const remainingDebt = updatedSales
-          .filter(s => s.status !== 'refunded' && s.status !== 'voided')
-          .reduce((sum, s) => sum + (s.balanceRemaining || 0), 0);
-        updateDoc(doc(db, 'users', owner.id), {
-          hasOutstandingBalance: remainingDebt > 0,
-        }).catch(() => {});
-
-        // T4.204: Recompute balance reminder queue after external settlement.
-        // Fire-and-forget — never blocks the settle action.
-        computeSingleOwnerBalanceReminder(owner.id, {
-          ownerName:  owner.fullName  || '',
-          ownerEmail: owner.email     || '',
-          ownerPhone: owner.phone     || '',
-          pushToken:  owner.expoPushToken || null,
-        }).catch(() => {});
-      }
-    } catch (e) {
-      console.error('[PatientDashboard.handleMarkSettled]:', e.message);
-      setErrorSnack('Failed to mark as settled: ' + e.message);
-    }
-  };
+  // T4.237 Day 3: Payment handlers now live in usePaymentActions.
+  // openRecordPayment, openMarkSettled, handlePrintSummary are accessed via paymentActions.*
 
   // T4.147 / T4.204: Snooze automated balance reminders for this client.
   // Writes balanceReminderSnoozedUntil to both the user doc (legacy path) and
@@ -1342,7 +1271,7 @@ export default function PatientDashboard() {
       setSuccessSnack(`Reminders snoozed for ${daysFromNow} day${daysFromNow !== 1 ? 's' : ''}.`);
     } catch (e) {
       console.error('[PatientDashboard.handleSnoozeReminders]:', e.message);
-      setErrorSnack('Failed to snooze reminders: ' + e.message);
+      setLocalErrorSnack('Failed to snooze reminders: ' + e.message);
     }
   };
 
@@ -1370,7 +1299,7 @@ export default function PatientDashboard() {
       setExemptionReason('');
     } catch (err) {
       console.error('[PatientDashboard.handleMarkExempt]:', err);
-      setErrorSnack('Failed to save exemption');
+      setLocalErrorSnack('Failed to save exemption');
     } finally {
       setExemptionSaving(false);
     }
@@ -1389,7 +1318,7 @@ export default function PatientDashboard() {
       if (petSnap.exists()) setPet({ id: petSnap.id, ...petSnap.data() });
     } catch (err) {
       console.error('[PatientDashboard.handleUndoExemption]:', err);
-      setErrorSnack('Failed to undo exemption');
+      setLocalErrorSnack('Failed to undo exemption');
     }
   };
 
@@ -1410,7 +1339,7 @@ export default function PatientDashboard() {
       }));
     } catch (err) {
       console.error('[PatientDashboard.handleTogglePin]:', err);
-      setErrorSnack('Failed to update pin status');
+      setLocalErrorSnack('Failed to update pin status');
     }
   };
 
@@ -3544,7 +3473,7 @@ export default function PatientDashboard() {
                           size="small"
                           variant="outlined"
                           disabled={isErased}
-                          onClick={() => { setRecordPaymentTarget(sale); setRecordPaymentAmount(''); setRecordPaymentOpen(true); }}
+                          onClick={() => paymentActions.openRecordPayment(sale)}
                           sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800, borderRadius: 0, color: COLORS.success, borderColor: '#A5D6A7', textTransform: 'none', py: 0.25, px: 1 }}
                         >
                           Record Payment
@@ -3554,11 +3483,21 @@ export default function PatientDashboard() {
                           size="small"
                           variant="outlined"
                           disabled={isErased}
-                          onClick={() => setSettleTarget(sale)}
+                          onClick={() => paymentActions.openMarkSettled(sale)}
                           sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 800, borderRadius: 0, color: COLORS.warning, borderColor: COLORS.warning, textTransform: 'none', py: 0.25, px: 1 }}
                         >
                           Mark Settled
                         </Button>
+                        {/* T4.237: Print sale summary with full payment history */}
+                        <Tooltip title="Print Sale Summary">
+                          <IconButton
+                            size="small"
+                            onClick={() => paymentActions.handlePrintSummary(sale)}
+                            sx={{ p: 0.5, borderRadius: 0, color: COLORS.brand, border: `1px solid ${COLORS.borderLight}` }}
+                          >
+                            <PrintIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Tooltip>
                       </Box>
                     </Box>
                   );
@@ -3617,62 +3556,8 @@ export default function PatientDashboard() {
         clinicAddress={clinicSettings.clinicAddress}
       />
 
-      {/* T2.101: Record Payment Dialog */}
-      <Dialog open={recordPaymentOpen} onClose={() => setRecordPaymentOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.brand }}>Record Payment</DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textSecondary, mb: 1.5 }}>
-            Outstanding: ₱{(recordPaymentTarget?.balanceRemaining || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-          </Typography>
-          <TextField
-            autoFocus
-            fullWidth
-            label="Payment Amount"
-            type="number"
-            size="small"
-            value={recordPaymentAmount}
-            onChange={(e) => setRecordPaymentAmount(e.target.value)}
-            InputProps={{ startAdornment: <Typography sx={{ mr: 0.5, color: '#aaa' }}>₱</Typography> }}
-            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 2.5, pb: 2 }}>
-          <Button onClick={() => setRecordPaymentOpen(false)} sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary }}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handleRecordPayment}
-            disabled={!recordPaymentAmount || parseFloat(recordPaymentAmount) <= 0}
-            sx={{ fontFamily: FONT, fontWeight: 900, bgcolor: COLORS.success, borderRadius: 0, '&:hover': { bgcolor: '#1B5E20' } }}
-          >
-            Save Payment
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* T4.147: Mark as Settled Confirmation Dialog */}
-      <Dialog open={!!settleTarget} onClose={() => setSettleTarget(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 0 } }}>
-        <DialogTitle sx={{ fontFamily: FONT, fontWeight: 900, fontSize: '0.95rem', color: COLORS.warning, borderBottom: `2px solid ${COLORS.border}` }}>
-          Mark as Settled
-        </DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', color: COLORS.textSecondary }}>
-            Mark <strong>₱{(settleTarget?.balanceRemaining || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong> as settled?
-            This records that payment was received outside the POS system (e.g. GCash, bank transfer).
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ px: 2.5, pb: 2 }}>
-          <Button onClick={() => setSettleTarget(null)} sx={{ fontFamily: FONT, fontWeight: 700, color: COLORS.textSecondary, borderRadius: 0 }}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleMarkSettled}
-            variant="contained"
-            sx={{ fontFamily: FONT, fontWeight: 900, borderRadius: 0, bgcolor: COLORS.warning, '&:hover': { bgcolor: COLORS.danger } }}
-          >
-            Confirm Settled
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* T4.237 Day 3: Payment dialogs (Record Payment, Reverse, Mark Settled) — rendered by hook */}
+      {paymentActions.paymentDialogs}
 
       {/* T3.101: Vaccine Exemption Dialog */}
       <Dialog
@@ -3763,15 +3648,27 @@ export default function PatientDashboard() {
         </Alert>
       </Snackbar>
 
-      {/* T2.129: Generic error snackbar */}
+      {/* T2.129: Generic error snackbar — state managed by usePaymentActions */}
       <Snackbar
-        open={!!errorSnack}
+        open={!!paymentActions.errorSnack}
         autoHideDuration={5000}
-        onClose={() => setErrorSnack('')}
+        onClose={() => paymentActions.setErrorSnack('')}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert onClose={() => setErrorSnack('')} severity="error" variant="filled" sx={{ fontFamily: FONT, width: '100%' }}>
-          {errorSnack}
+        <Alert onClose={() => paymentActions.setErrorSnack('')} severity="error" variant="filled" sx={{ fontFamily: FONT, width: '100%' }}>
+          {paymentActions.errorSnack}
+        </Alert>
+      </Snackbar>
+
+      {/* localErrorSnack: for non-payment errors (snooze, exempt, pin). Payment errors use paymentActions.errorSnack. */}
+      <Snackbar
+        open={!!localErrorSnack}
+        autoHideDuration={5000}
+        onClose={() => setLocalErrorSnack('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Alert onClose={() => setLocalErrorSnack('')} severity="error" variant="filled" sx={{ fontFamily: FONT, width: '100%' }}>
+          {localErrorSnack}
         </Alert>
       </Snackbar>
 

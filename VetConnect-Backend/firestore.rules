@@ -213,6 +213,18 @@ service cloud.firestore {
       allow delete: if false;  // Sales records are permanent (audit trail)
     }
 
+    // ─── PAYMENTS (append-only audit trail) ───────────────────────
+    // Each POS tender, subsequent partial payment, external settlement,
+    // or reversal is one immutable document. Updates and deletes are
+    // blocked at the rules layer — corrections are made by appending a
+    // negative-amount reversal payment referencing the original.
+    // T4.237: append-only pattern — reversalOf FK is the escape hatch.
+    match /payments/{paymentId} {
+      allow read:           if isStaff();   // Pet owners never read payments — admin-only audit trail
+      allow create:         if isStaff();
+      allow update, delete: if false;
+    }
+
     // ─── QUEUE ────────────────────────────────────────────────────
     match /queue/{queueDoc} {
       allow read: if isAuth();    // Mobile clients see queue position

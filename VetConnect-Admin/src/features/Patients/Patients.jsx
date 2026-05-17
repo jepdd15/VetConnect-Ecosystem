@@ -8,6 +8,7 @@ import { FONT, COLORS } from '../../theme/designTokens';
 
 // 1. Logic (The Brain)
 import { usePatientManager } from './hooks/usePatientManager';
+import { usePaymentActions } from './hooks/usePaymentActions';
 
 // 2. Local Components
 import PatientDirectory from './components/PatientDirectory';
@@ -55,6 +56,14 @@ export default function Patients() {
 
   // RA 10173 erasure dialog state
   const [erasureTarget, setErasureTarget] = useState(null); // { userId, userName, requestDate }
+
+  // T4.237 Day 3: Payment actions hook — wires BillingLedger Reverse/Print buttons.
+  // owner = selectedClient; ownerSales = clientTransactions (from onSnapshot listener).
+  // setOwnerSales is omitted — the real-time listener refreshes clientTransactions automatically.
+  const paymentActions = usePaymentActions({
+    owner: selectedClient,
+    ownerSales: clientTransactions,
+  });
 
   const pendingDeletionRequests = useMemo(
     () => owners.filter((o) => o.deletionRequested === true),
@@ -240,7 +249,14 @@ export default function Patients() {
               )}
               {activeTab === 0 && <PetList pets={clientPets} calculatePetAge={calculatePetAge} onRegisterPet={() => setOpenAddPet(true)} onArchive={archivePet} onRestore={restorePet} onQuickBook={handleQuickBookOpen} onEditPet={(pet) => { setSelectedPet(pet); setOpenEditPet(true); }} />}
               {activeTab === 1 && <ClientDetails editForm={editForm} setEditForm={setEditForm} isEditing={isEditing} calculatePetAge={calculatePetAge} />}
-              {activeTab === 2 && <BillingLedger transactions={clientTransactions} />}
+              {activeTab === 2 && (
+                <BillingLedger
+                  transactions={clientTransactions}
+                  onReversePayment={paymentActions.handleReversePayment}
+                  onPrintPayment={paymentActions.handlePrintPayment}
+                  onPrintSummary={paymentActions.handlePrintSummary}
+                />
+              )}
               {activeTab === 3 && <InternalLogs notes={selectedClient.staffNotes || []} newNote={newNote} setNewNote={setNewNote} category={noteCategory} setCategory={setNoteCategory} onAdd={handleAddNote} onDelete={handleDeleteNote} />}
             </Box>
           </>
@@ -322,6 +338,26 @@ export default function Patients() {
           sx={{ fontFamily: FONT, width: '100%' }}
         >
           {snack.message}
+        </Alert>
+      </Snackbar>
+
+      {/* T4.237 Day 3: Payment dialogs (Record Payment, Reverse, Mark Settled) */}
+      {paymentActions.paymentDialogs}
+
+      {/* T4.237 Day 3: Payment error feedback */}
+      <Snackbar
+        open={!!paymentActions.errorSnack}
+        autoHideDuration={5000}
+        onClose={() => paymentActions.setErrorSnack('')}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => paymentActions.setErrorSnack('')}
+          severity="error"
+          variant="filled"
+          sx={{ fontFamily: FONT, width: '100%' }}
+        >
+          {paymentActions.errorSnack}
         </Alert>
       </Snackbar>
     </Box>

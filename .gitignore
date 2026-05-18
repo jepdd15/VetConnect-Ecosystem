@@ -73,3 +73,17 @@ VetConnect-Admin/marianne_report.txt
 *Alpha-Test-Evaluation-Form*
 *Beta-Test-Evaluation-Form*
 .gitattributes
+
+# Methodology appendices (kept locally, scrubbed from public history 2026-05-17)
+APPENDIX_*.html
+APPENDIX_*.pdf
+BETA_TEST_COMPUTATION.html
+BETA_TEST_COMPUTATION.pdf
+Chapter 1 - 3 revised.pdf
+Chapter-1-3-revised.txt
+
+# History-rewrite paths file (one-off, not needed in repo)
+files-to-remove.txt
+
+# Branded architecture diagram (referenced from gitignored Appendix I only)
+system_architecture_branded.png

@@ -6,10 +6,10 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
 
-const PatientDirectory = React.memo(function PatientDirectory({ owners, selectedId, onSelect, onNewClient, onSearchChange, searchText }) {
+const PatientDirectory = React.memo(function PatientDirectory({ owners, selectedId, onSelect, onNewClient, onSearchChange, searchText, sx }) {
   return (
-    <Paper square sx={{ width: 320, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${COLORS.border}`, bgcolor: COLORS.surfaceAlt, zIndex: 1, boxShadow: '2px 0 5px rgba(0,0,0,0.02)' }}>
-      <Box sx={{ p: 2.5, borderBottom: `1px solid ${COLORS.border}`, bgcolor: COLORS.cardBg }}>
+    <Paper square sx={{ width: { xs: '100%', md: 320 }, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${COLORS.border}`, bgcolor: COLORS.surfaceAlt, zIndex: 1, boxShadow: '2px 0 5px rgba(0,0,0,0.02)', ...sx }}>
+      <Box sx={{ p: 2.5, pl: { xs: 8, md: 2.5 }, borderBottom: `1px solid ${COLORS.border}`, bgcolor: COLORS.cardBg }}>
          <Button 
            variant="contained" 
            startIcon={<PersonAddIcon />} 

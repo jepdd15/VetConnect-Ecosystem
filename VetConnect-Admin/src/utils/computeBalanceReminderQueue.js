@@ -41,6 +41,7 @@ import {
   where,
   setDoc,
   deleteDoc,
+  updateDoc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
@@ -180,6 +181,13 @@ export async function computeSingleOwnerBalanceReminder(ownerId, ownerData = {})
     saleCount,
     lastSaleDate,
   );
+
+  // Sync the hasOutstandingBalance boolean on the client profile
+  await updateDoc(doc(db, 'users', ownerId), {
+    hasOutstandingBalance: totalBalance > 0,
+  }).catch((err) => {
+    console.error('[computeSingleOwnerBalanceReminder] Failed to update user flag:', err.message);
+  });
 }
 
 // ── Public: Full recompute (Dashboard button) ────────────────────────────────
@@ -276,12 +284,42 @@ export async function computeFullBalanceReminderQueue() {
           );
           if (outcome === 'updated') updated++;
           else                       deleted++;
+
+          // Sync client profile flag
+          await updateDoc(doc(db, 'users', ownerId), {
+            hasOutstandingBalance: data.totalBalance > 0,
+          }).catch(() => {});
         } catch (err) {
           console.error('[computeFullBalanceReminderQueue] Write error for', ownerId, err?.message);
           errors++;
         }
       }),
     );
+  }
+
+  // Clear stale outstanding balance flags for any users not in ownerMap
+  try {
+    const staleUsersSnap = await getDocs(
+      query(
+        collection(db, 'users'),
+        where('hasOutstandingBalance', '==', true),
+      ),
+    );
+    const staleBatch = staleUsersSnap.docs.filter((d) => !ownerMap.has(d.id));
+    for (let i = 0; i < staleBatch.length; i += BATCH_SIZE) {
+      const chunk = staleBatch.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        chunk.map(async (d) => {
+          try {
+            await updateDoc(doc(db, 'users', d.id), { hasOutstandingBalance: false });
+          } catch (err) {
+            console.error('[computeFullBalanceReminderQueue] Failed to clear user flag:', d.id, err.message);
+          }
+        }),
+      );
+    }
+  } catch (err) {
+    console.error('[computeFullBalanceReminderQueue] Stale users cleanup failed:', err.message);
   }
 
   return { updated, deleted, errors };

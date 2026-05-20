@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Box, Tabs, Tab, Typography, CircularProgress, Snackbar, Alert, Button } from '@mui/material';
+import { Box, Tabs, Tab, Typography, CircularProgress, Snackbar, Alert, Button, useTheme, useMediaQuery } from '@mui/material';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
@@ -31,6 +31,8 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 
 export default function Patients() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [activeTab, setActiveTab] = useState(0);
 
   const {
@@ -113,161 +115,169 @@ export default function Patients() {
   return (
     <Box sx={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', bgcolor: COLORS.surfaceAlt }}>
       
-      <PatientDirectory 
-        owners={filteredOwners} 
-        selectedId={selectedClient?.id} 
-        onSelect={handleSelectClient} 
-        searchText={searchText}
-        onSearchChange={(e) => setSearchText(e.target.value)}
-        onNewClient={() => setOpenNewClient(true)} 
-      />
+      {(!isMobile || !selectedClient) && (
+        <PatientDirectory 
+          owners={filteredOwners} 
+          selectedId={selectedClient?.id} 
+          onSelect={handleSelectClient} 
+          searchText={searchText}
+          onSearchChange={(e) => setSearchText(e.target.value)}
+          onNewClient={() => setOpenNewClient(true)} 
+        />
+      )}
 
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: `linear-gradient(160deg, ${COLORS.surface} 0%, ${COLORS.peach} 100%)` }}>
+      {(!isMobile || selectedClient) && (
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: `linear-gradient(160deg, ${COLORS.surface} 0%, ${COLORS.peach} 100%)` }}>
 
-        {/* RA 10173 — Pending deletion requests banner */}
-        {pendingDeletionRequests.length > 0 && (
-          <Box
-            sx={{
-              bgcolor: COLORS.dangerSurface,
-              borderBottom: `2px solid ${COLORS.danger}`,
-              px: 3,
-              py: 1.25,
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: pendingDeletionRequests.length > 0 ? 0.75 : 0 }}>
-              <WarningAmberIcon sx={{ color: COLORS.danger, fontSize: 18 }} />
-              <Typography
-                sx={{
-                  fontFamily: FONT,
-                  fontWeight: 800,
-                  fontSize: '0.78rem',
-                  color: COLORS.danger,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.07em',
-                }}
-              >
-                {pendingDeletionRequests.length} client{pendingDeletionRequests.length !== 1 ? 's' : ''} have requested account erasure under RA 10173
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {pendingDeletionRequests.map((client) => (
-                <Box
-                  key={client.id}
+          {/* RA 10173 — Pending deletion requests banner */}
+          {pendingDeletionRequests.length > 0 && (
+            <Box
+              sx={{
+                bgcolor: COLORS.dangerSurface,
+                borderBottom: `2px solid ${COLORS.danger}`,
+                px: 3,
+                py: 1.25,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: pendingDeletionRequests.length > 0 ? 0.75 : 0 }}>
+                <WarningAmberIcon sx={{ color: COLORS.danger, fontSize: 18 }} />
+                <Typography
                   sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1.5,
-                    bgcolor: COLORS.cardBg,
-                    border: `1px solid #EF9A9A`,
-                    px: 1.5,
-                    py: 0.5,
+                    fontFamily: FONT,
+                    fontWeight: 800,
+                    fontSize: '0.78rem',
+                    color: COLORS.danger,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.07em',
                   }}
                 >
-                  <Typography sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.8rem', color: COLORS.textPrimary }}>
-                    {client.fullName}
-                  </Typography>
-                  {client.deletionRequestedAt?.seconds && (
-                    <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted }}>
-                      {new Date(client.deletionRequestedAt.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </Typography>
-                  )}
-                  <Button
-                    size="small"
-                    variant="contained"
-                    startIcon={<DeleteForeverIcon sx={{ fontSize: '14px !important' }} />}
-                    onClick={() => handleOpenErasure(client)}
+                  {pendingDeletionRequests.length} client{pendingDeletionRequests.length !== 1 ? 's' : ''} have requested account erasure under RA 10173
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {pendingDeletionRequests.map((client) => (
+                  <Box
+                    key={client.id}
                     sx={{
-                      fontFamily: FONT,
-                      fontWeight: 700,
-                      fontSize: '0.7rem',
-                      borderRadius: 0,
-                      bgcolor: COLORS.danger,
-                      color: '#fff',
-                      py: 0.25,
-                      px: 1,
-                      minHeight: 0,
-                      boxShadow: `2px 2px 0px ${COLORS.dangerHover}`,
-                      '&:hover': { bgcolor: COLORS.dangerHover, boxShadow: 'none' },
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.5,
+                      bgcolor: COLORS.cardBg,
+                      border: `1px solid #EF9A9A`,
+                      px: 1.5,
+                      py: 0.5,
                     }}
                   >
-                    Process Erasure
-                  </Button>
-                </Box>
-              ))}
+                    <Typography sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.8rem', color: COLORS.textPrimary }}>
+                      {client.fullName}
+                    </Typography>
+                    {client.deletionRequestedAt?.seconds && (
+                      <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', color: COLORS.textMuted }}>
+                        {new Date(client.deletionRequestedAt.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </Typography>
+                    )}
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<DeleteForeverIcon sx={{ fontSize: '14px !important' }} />}
+                      onClick={() => handleOpenErasure(client)}
+                      sx={{
+                        fontFamily: FONT,
+                        fontWeight: 700,
+                        fontSize: '0.7rem',
+                        borderRadius: 0,
+                        bgcolor: COLORS.danger,
+                        color: '#fff',
+                        py: 0.25,
+                        px: 1,
+                        minHeight: 0,
+                        boxShadow: `2px 2px 0px ${COLORS.dangerHover}`,
+                        '&:hover': { bgcolor: COLORS.dangerHover, boxShadow: 'none' },
+                      }}
+                    >
+                      Process Erasure
+                    </Button>
+                  </Box>
+                ))}
+              </Box>
             </Box>
-          </Box>
-        )}
+          )}
 
-        {loading && !selectedClient ? (
-           <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-             <CircularProgress />
-           </Box>
-        ) : selectedClient ? (
-          <>
-            <ClientHeader
-              client={selectedClient}
-              balance={outstandingBalance}
-              isEditing={isEditing}
-              onEdit={() => setIsEditing(true)}
-              onCancel={() => { setEditForm(selectedClient); setIsEditing(false); }}
-              engagementKPIs={engagementKPIs}
-              onProcessErasure={() => handleOpenErasure(selectedClient)}
-              onSave={async () => {
-                  try {
-                      await handleSaveProfile();
-                      setSnack({ open: true, message: 'Profile saved successfully.', severity: 'success' });
-                      setIsEditing(false); // Make sure to exit edit mode
-                  } catch(e) {
-                      setSnack({ open: true, message: e.message, severity: 'error' });
-                  }
-              }}
-            />
-            
-            <Box sx={{ px: 4, pt: 1, borderBottom: `1px solid ${COLORS.border}`, bgcolor: COLORS.surfaceAlt }}>
-              <Tabs 
-                value={activeTab} 
-                onChange={(e, v) => setActiveTab(v)} 
-                sx={{ 
-                  minHeight: 44, 
-                  '& .MuiTabs-indicator': { height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3, bgcolor: COLORS.cta },
-                  '& .MuiTab-root': { fontFamily: FONT, fontWeight: 800, textTransform: 'uppercase', fontSize: '0.75rem', minHeight: 44, py: 1, px: 3, color: COLORS.textMuted },
-                  '& .Mui-selected': { color: `${COLORS.cta} !important` },
+          {loading && !selectedClient ? (
+             <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+               <CircularProgress />
+             </Box>
+          ) : selectedClient ? (
+            <>
+              <ClientHeader
+                client={selectedClient}
+                balance={outstandingBalance}
+                isEditing={isEditing}
+                onEdit={() => setIsEditing(true)}
+                onCancel={() => { setEditForm(selectedClient); setIsEditing(false); }}
+                engagementKPIs={engagementKPIs}
+                onProcessErasure={() => handleOpenErasure(selectedClient)}
+                onSave={async () => {
+                    try {
+                        await handleSaveProfile();
+                        setSnack({ open: true, message: 'Profile saved successfully.', severity: 'success' });
+                        setIsEditing(false); // Make sure to exit edit mode
+                    } catch(e) {
+                        setSnack({ open: true, message: e.message, severity: 'error' });
+                    }
                 }}
-              >
-                <Tab label={`Pets (${clientPets.filter(p => p.status !== 'archived' && p.status !== 'deceased').length})`} />
-                <Tab label="Owner Details" />
-                <Tab label="Billing Ledger" />
-                <Tab label="Internal Logs" />
-              </Tabs>
-            </Box>
+                onBack={isMobile ? () => handleSelectClient(null) : null}
+              />
+              
+              <Box sx={{ px: { xs: 2, md: 4 }, pl: { xs: 8, md: 4 }, pt: 1, borderBottom: `1px solid ${COLORS.border}`, bgcolor: COLORS.surfaceAlt }}>
+                <Tabs 
+                  value={activeTab} 
+                  onChange={(e, v) => setActiveTab(v)} 
+                  variant={isMobile ? "scrollable" : "standard"}
+                  scrollButtons="auto"
+                  allowScrollButtonsMobile
+                  sx={{ 
+                    minHeight: 44, 
+                    '& .MuiTabs-indicator': { height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3, bgcolor: COLORS.cta },
+                    '& .MuiTab-root': { fontFamily: FONT, fontWeight: 800, textTransform: 'uppercase', fontSize: '0.75rem', minHeight: 44, py: 1, px: 3, color: COLORS.textMuted },
+                    '& .Mui-selected': { color: `${COLORS.cta} !important` },
+                  }}
+                >
+                  <Tab label={`Pets (${clientPets.filter(p => p.status !== 'archived' && p.status !== 'deceased').length})`} />
+                  <Tab label="Owner Details" />
+                  <Tab label="Billing Ledger" />
+                  <Tab label="Internal Logs" />
+                </Tabs>
+              </Box>
 
-            <Box sx={{ flexGrow: 1, overflowY: 'auto', bgcolor: COLORS.surface, position: 'relative' }}>
-              {loadingClientData && (
-                <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.7)', zIndex: 10 }}>
-                  <CircularProgress size={32} />
-                </Box>
-              )}
-              {activeTab === 0 && <PetList pets={clientPets} calculatePetAge={calculatePetAge} onRegisterPet={() => setOpenAddPet(true)} onArchive={archivePet} onRestore={restorePet} onQuickBook={handleQuickBookOpen} onEditPet={(pet) => { setSelectedPet(pet); setOpenEditPet(true); }} />}
-              {activeTab === 1 && <ClientDetails editForm={editForm} setEditForm={setEditForm} isEditing={isEditing} calculatePetAge={calculatePetAge} />}
-              {activeTab === 2 && (
-                <BillingLedger
-                  transactions={clientTransactions}
-                  onReversePayment={paymentActions.handleReversePayment}
-                  onPrintPayment={paymentActions.handlePrintPayment}
-                  onPrintSummary={paymentActions.handlePrintSummary}
-                />
-              )}
-              {activeTab === 3 && <InternalLogs notes={selectedClient.staffNotes || []} newNote={newNote} setNewNote={setNewNote} category={noteCategory} setCategory={setNoteCategory} onAdd={handleAddNote} onDelete={handleDeleteNote} />}
-            </Box>
-          </>
-        ) : (
-           <Box sx={{ flex: 1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection: 'column', color: COLORS.textMuted }}>
-             <PetsIcon sx={{ fontSize: 80, mb: 2, opacity: 0.15 }} />
-             <Typography variant="h6" sx={{ fontFamily: FONT, color: COLORS.textMuted, fontWeight: 'bold' }}>No Client Selected</Typography>
-             <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>Search or select a client from the directory to view their profile.</Typography>
-           </Box>
-        )}
-      </Box>
+              <Box sx={{ flexGrow: 1, overflowY: 'auto', bgcolor: COLORS.surface, position: 'relative' }}>
+                {loadingClientData && (
+                  <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.7)', zIndex: 10 }}>
+                    <CircularProgress size={32} />
+                  </Box>
+                )}
+                {activeTab === 0 && <PetList pets={clientPets} calculatePetAge={calculatePetAge} onRegisterPet={() => setOpenAddPet(true)} onArchive={archivePet} onRestore={restorePet} onQuickBook={handleQuickBookOpen} onEditPet={(pet) => { setSelectedPet(pet); setOpenEditPet(true); }} />}
+                {activeTab === 1 && <ClientDetails editForm={editForm} setEditForm={setEditForm} isEditing={isEditing} calculatePetAge={calculatePetAge} />}
+                {activeTab === 2 && (
+                  <BillingLedger
+                    transactions={clientTransactions}
+                    onReversePayment={paymentActions.handleReversePayment}
+                    onPrintPayment={paymentActions.handlePrintPayment}
+                    onPrintSummary={paymentActions.handlePrintSummary}
+                  />
+                )}
+                {activeTab === 3 && <InternalLogs notes={selectedClient.staffNotes || []} newNote={newNote} setNewNote={setNewNote} category={noteCategory} setCategory={setNoteCategory} onAdd={handleAddNote} onDelete={handleDeleteNote} />}
+              </Box>
+            </>
+          ) : (
+             <Box sx={{ flex: 1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection: 'column', color: COLORS.textMuted }}>
+               <PetsIcon sx={{ fontSize: 80, mb: 2, opacity: 0.15 }} />
+               <Typography variant="h6" sx={{ fontFamily: FONT, color: COLORS.textMuted, fontWeight: 'bold' }}>No Client Selected</Typography>
+               <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.textMuted }}>Search or select a client from the directory to view their profile.</Typography>
+             </Box>
+          )}
+        </Box>
+      )}
 
       {/* --- MODALS --- */}
       {openAddPet && selectedClient && (

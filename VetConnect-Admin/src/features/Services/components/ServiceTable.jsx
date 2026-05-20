@@ -112,7 +112,7 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
         '&::-webkit-scrollbar-thumb': { background: COLORS.accent, borderRadius: '4px' },
         '&::-webkit-scrollbar-thumb:hover': { background: COLORS.brand },
       }}>
-        <Table stickyHeader size="small">
+        <Table stickyHeader size="small" sx={{ minWidth: 800 }}>
           <TableHead>
             <TableRow>
               <TableCell sx={{ width: 40, ...headerSx }} />

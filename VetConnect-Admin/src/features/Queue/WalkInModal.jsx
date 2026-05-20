@@ -331,6 +331,8 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
     }
 
     setLoading(true);
+    let issuedQueueNumber = null;
+
     try {
       await runTransaction(db, async (transaction) => {
         // ALL READS FIRST (Firestore transaction requirement)
@@ -338,6 +340,7 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
         const queueDoc = await transaction.get(queueRef);
         // ONE queue number for the entire group (shared ticket — Option C)
         const sharedNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
+        issuedQueueNumber = sharedNumber;
 
         let finalOwnerId, finalOwnerName, finalOwnerPhone, finalOwnerEmail, finalOwnerAddress, finalOwnerCity, finalEmergencyContacts;
 
@@ -526,10 +529,18 @@ export default function WalkInModal({ open, onClose, servicesList, departments, 
       petEntries.forEach((entry) => {
         const resolvedOwnerId = walkInType === 'guest' ? null : selectedClient?.id;
         if (resolvedOwnerId) {
+          const isEmergency = entry.selectedServices.some(
+            svcName => servicesList.find(s => s.name === svcName)?.isEmergency
+          );
+          const prefix = isEmergency ? 'E' : 'W';
+          const formattedTicket = isFuture ? '' : `${prefix}-${String(issuedQueueNumber).padStart(3, '0')}`;
+
           sendPushNotification({
             ownerId: resolvedOwnerId,
             status: isFuture ? 'confirmed' : 'arrived',
             petName: entry.isNewPet || walkInType === 'guest' ? entry.name : entry.selectedPet?.name,
+            ticketNumber: formattedTicket,
+            vetName: 'Unassigned',
             sentBy: profile?.fullName || 'Staff',
           });
         }

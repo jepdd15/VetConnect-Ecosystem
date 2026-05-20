@@ -335,7 +335,9 @@ export default function Inventory() {
       {/* 1. BOXED FORENSIC HEADER */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper sx={{
-          p: 2, px: 4, 
+          p: 2,
+          pl: { xs: 8, md: 4 },
+          pr: 4,
           display: 'flex', 
           flexWrap: 'wrap', 
           gap: 2, 
@@ -437,8 +439,13 @@ export default function Inventory() {
             alignItems: 'center', 
             flexGrow: 2, 
             justifyContent: { xs: 'flex-start', lg: 'flex-end' },
-            flexWrap: 'wrap',
-            flexBasis: '600px'
+            flexWrap: { xs: 'nowrap', lg: 'wrap' },
+            flexBasis: '600px',
+            overflowX: { xs: 'auto', lg: 'visible' },
+            width: { xs: '100%', lg: 'auto' },
+            pb: { xs: 0.5, lg: 0 },
+            '&::-webkit-scrollbar': { height: '6px' },
+            '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(93, 64, 55, 0.2)', borderRadius: '3px' }
           }}>
             {activeTab === 0 && !showArchived && (
               <Button
@@ -447,6 +454,7 @@ export default function Inventory() {
                 disabled={lowStockItems.length === 0}
                 onClick={() => printReorderList(lowStockItems, clinicSettings, () => showToast('Pop-up blocked — allow pop-ups for this site.', 'warning'))}
                 sx={{
+                  flexShrink: 0,
                   fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 2, borderRadius: 0, border: '2px solid',
                   color: COLORS.warning, borderColor: `${COLORS.warning}33`, '&:hover': { bgcolor: COLORS.warningSurface, borderColor: COLORS.warning }
                 }}
@@ -466,6 +474,7 @@ export default function Inventory() {
                   showToast(`Exported ${filteredItems.length} items to CSV.`);
                 }}
                 sx={{
+                  flexShrink: 0,
                   fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 2, borderRadius: 0, border: '2px solid',
                   color: COLORS.medical, borderColor: `${COLORS.medical}33`, '&:hover': { bgcolor: COLORS.kpiBlueBg, borderColor: COLORS.medical }
                 }}
@@ -487,6 +496,7 @@ export default function Inventory() {
                   () => showToast('Pop-up blocked — allow pop-ups for this site.', 'warning')
                 )}
                 sx={{
+                  flexShrink: 0,
                   fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 2, borderRadius: 0, border: '2px solid',
                   color: COLORS.accent, borderColor: `${COLORS.accent}33`, '&:hover': { bgcolor: COLORS.cream, borderColor: COLORS.accent }
                 }}
@@ -501,6 +511,7 @@ export default function Inventory() {
                 startIcon={<DeleteSweepIcon />}
                 onClick={() => setOpenDisposal(true)}
                 sx={{
+                  flexShrink: 0,
                   fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 2, borderRadius: 0, border: '2px solid',
                   color: expiredItems.length > 0 ? COLORS.danger : COLORS.accent, 
                   borderColor: expiredItems.length > 0 ? COLORS.danger : `${COLORS.accent}33`,
@@ -515,6 +526,7 @@ export default function Inventory() {
               variant="contained"
               startIcon={<AddIcon />}
               sx={{ 
+                flexShrink: 0,
                 bgcolor: COLORS.sky, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 3, borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, 
                 boxShadow: `4px 4px 0px ${COLORS.brand}1A`,
                 '&:hover': { bgcolor: COLORS.skyHover } 
@@ -528,14 +540,33 @@ export default function Inventory() {
       </Box>
       <Box sx={{ flexShrink: 0, mb: 0 }}>
       {/* 2. BOXED KPI ROW */}
-        <Paper sx={{ p: 0, bgcolor: COLORS.tableHeaderBg, borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none' }}>
-          <Grid container spacing={0} sx={{ '& > div:not(:last-child)': { borderRight: `1px solid ${COLORS.accent}1A` } }}>
-             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Active Products" value={kpis.totalItems} icon={<InventoryIcon />} color={COLORS.medical} /></Grid>
-             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Expiring Soon" value={kpis.expiringSoon} icon={<EventBusyIcon />} color={COLORS.kpiPurpleText} onClick={() => toggleStockFilter('expiring')} active={stockFilter === 'expiring'} /></Grid>
-             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Low Stock" value={kpis.lowStock} icon={<WarningAmberIcon />} color={COLORS.warning} onClick={() => toggleStockFilter('low')} active={stockFilter === 'low'} /></Grid>
-             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Out of Stock" value={kpis.outOfStock} icon={<ErrorOutlineIcon />} color={COLORS.danger} onClick={() => toggleStockFilter('out')} active={stockFilter === 'out'} /></Grid>
-             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Archived" value={kpis.archivedCount} icon={<ArchiveIcon />} color={COLORS.warning} onClick={toggleArchived} active={showArchived} /></Grid>
-             <Grid size={{ xs: 6, md: 2 }}><KPICard title="Total Value" value={`₱${kpis.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}`} icon={<AttachMoneyIcon />} color={COLORS.success} /></Grid>
+        <Paper sx={{ 
+          p: 0, 
+          bgcolor: COLORS.tableHeaderBg, 
+          borderBottom: `2px solid ${COLORS.accent}`, 
+          borderRadius: 0, 
+          boxShadow: 'none',
+          overflowX: 'auto',
+          width: '100%',
+          '&::-webkit-scrollbar': { height: '6px' },
+          '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(93, 64, 55, 0.2)', borderRadius: '3px' }
+        }}>
+          <Grid 
+            container 
+            spacing={0} 
+            sx={{ 
+              flexWrap: { xs: 'nowrap', md: 'wrap' },
+              width: { xs: 'max-content', md: '100%' },
+              minWidth: '100%',
+              '& > div:not(:last-child)': { borderRight: `1px solid ${COLORS.accent}1A` } 
+            }}
+          >
+             <Grid size={{ xs: 6, md: 2 }} sx={{ flexShrink: 0, minWidth: { xs: '160px', md: 'auto' } }}><KPICard title="Active Products" value={kpis.totalItems} icon={<InventoryIcon />} color={COLORS.medical} /></Grid>
+             <Grid size={{ xs: 6, md: 2 }} sx={{ flexShrink: 0, minWidth: { xs: '160px', md: 'auto' } }}><KPICard title="Expiring Soon" value={kpis.expiringSoon} icon={<EventBusyIcon />} color={COLORS.kpiPurpleText} onClick={() => toggleStockFilter('expiring')} active={stockFilter === 'expiring'} /></Grid>
+             <Grid size={{ xs: 6, md: 2 }} sx={{ flexShrink: 0, minWidth: { xs: '160px', md: 'auto' } }}><KPICard title="Low Stock" value={kpis.lowStock} icon={<WarningAmberIcon />} color={COLORS.warning} onClick={() => toggleStockFilter('low')} active={stockFilter === 'low'} /></Grid>
+             <Grid size={{ xs: 6, md: 2 }} sx={{ flexShrink: 0, minWidth: { xs: '160px', md: 'auto' } }}><KPICard title="Out of Stock" value={kpis.outOfStock} icon={<ErrorOutlineIcon />} color={COLORS.danger} onClick={() => toggleStockFilter('out')} active={stockFilter === 'out'} /></Grid>
+             <Grid size={{ xs: 6, md: 2 }} sx={{ flexShrink: 0, minWidth: { xs: '160px', md: 'auto' } }}><KPICard title="Archived" value={kpis.archivedCount} icon={<ArchiveIcon />} color={COLORS.warning} onClick={toggleArchived} active={showArchived} /></Grid>
+             <Grid size={{ xs: 6, md: 2 }} sx={{ flexShrink: 0, minWidth: { xs: '160px', md: 'auto' } }}><KPICard title="Total Value" value={`₱${kpis.totalValue.toLocaleString(undefined, {minimumFractionDigits: 2})}`} icon={<AttachMoneyIcon />} color={COLORS.success} /></Grid>
           </Grid>
         </Paper>
       </Box>

@@ -1090,6 +1090,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         ownerId: patient.ownerId,
         status: 'completed',
         petName: patient.petName,
+        amount: financials.total,
         appointmentId: patient.id,
         sentBy: posCashierName,
       });
@@ -1385,9 +1386,9 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
           )}
 
           {/* Main content area — flex row matching original layout */}
-          <Box sx={{ display: 'flex', gap: 3, p: 3, flex: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3, p: { xs: 2, md: 3 }, flex: 1 }}>
           {/* LEFT: CART ITEMS */}
-          <Box sx={{ flex: 2, display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ flex: 2, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             
             <Box sx={{ mb: 3 }}>
               <Autocomplete
@@ -1468,8 +1469,14 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             </Box>
 
             {/* CART TABLE */}
-            <TableContainer component={Paper} variant="outlined" sx={{ flexGrow: 1, borderRadius: 0 }}>
-              <Table size="small">
+            <TableContainer component={Paper} variant="outlined" sx={{
+              flexGrow: 1,
+              borderRadius: 0,
+              overflowX: 'auto',
+              '&::-webkit-scrollbar': { height: '6px' },
+              '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(93, 64, 55, 0.2)', borderRadius: '3px' }
+            }}>
+              <Table size="small" sx={{ minWidth: 550 }}>
                 <TableHead sx={{ bgcolor: COLORS.panelBg }}>
                   <TableRow><TableCell sx={{fontWeight:'bold'}}>Item</TableCell><TableCell align="center" sx={{fontWeight:'bold'}}>Qty</TableCell><TableCell align="right" sx={{fontWeight:'bold'}}>Price</TableCell><TableCell align="right" sx={{fontWeight:'bold'}}>Total</TableCell><TableCell align="center"></TableCell></TableRow>
                 </TableHead>
@@ -1686,8 +1693,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                    ...(paymentTenders.length > 1 ? { boxShadow: `3px 3px 0px ${COLORS.accent}1A` } : {}),
                  }}>
                    {/* Row: Method dropdown + Amount + Remove */}
-                   <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                     <FormControl size="small" sx={{ minWidth: 140 }}>
+                   <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, alignItems: { xs: 'stretch', sm: 'center' } }}>
+                     <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 140 } }}>
                        <Select
                          value={tender.method}
                          onChange={(e) => updateTender(idx, 'method', e.target.value)}
@@ -1893,16 +1900,16 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             </Box>
           </Popover>
         </DialogContent>
-        <DialogActions sx={{ p: 2.5, bgcolor: COLORS.panelBg, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${COLORS.timelineRail}` }}>
-          <Button onClick={onClose} sx={{ color: COLORS.accent, fontWeight: 'bold', px: 3, borderRadius: 0 }}>Cancel</Button>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+        <DialogActions sx={{ p: 2.5, bgcolor: COLORS.panelBg, display: 'flex', flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: 2, justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${COLORS.timelineRail}` }}>
+          <Button onClick={onClose} sx={{ color: COLORS.accent, fontWeight: 'bold', px: 3, borderRadius: 0, width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: { xs: 'stretch', sm: 'flex-end' }, gap: 1, width: { xs: '100%', sm: 'auto' } }}>
             {checkoutError && (
               <Alert severity="error" onClose={() => setCheckoutError('')} sx={{ borderRadius: 0, fontWeight: 700, width: '100%' }}>
                 {checkoutError}
               </Alert>
             )}
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button onClick={handleSaveDraft} disabled={loading || isRetailMode} variant="outlined" color="primary" startIcon={<SaveIcon />} sx={{ borderRadius: 0 }}>Save Invoice Draft</Button>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2, width: '100%' }}>
+              <Button onClick={handleSaveDraft} disabled={loading || isRetailMode} variant="outlined" color="primary" startIcon={<SaveIcon />} sx={{ borderRadius: 0, width: { xs: '100%', sm: 'auto' } }}>Save Invoice Draft</Button>
               <Button
                 onClick={() => {
                   if (isRetailMode) {
@@ -1919,7 +1926,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                   // T4.237 D3: Block checkout when a non-Cash tender is missing a reference number
                   || paymentTenders.some(t => isRefNumberRequired(t.method) && !t.referenceNumber?.trim())
                 }
-                variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', borderRadius: 0, boxShadow: `4px 4px 0px ${COLORS.brand}` }}
+                variant="contained" color="success" size="large" startIcon={<PaidIcon />} sx={{ px: 4, fontWeight: '900', borderRadius: 0, boxShadow: `4px 4px 0px ${COLORS.brand}`, width: { xs: '100%', sm: 'auto' } }}
               >
                 {loading ? "Processing..." : `Settle Balance (₱${financials.balanceDue})`}
               </Button>

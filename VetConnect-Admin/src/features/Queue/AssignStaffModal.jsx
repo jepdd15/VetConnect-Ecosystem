@@ -46,6 +46,8 @@ export default function AssignStaffModal({ open, onClose, patient }) {
     setLoading(true);
     setErrorMsg('');
 
+    let issuedQueueNumber = null;
+
     try {
       await runTransaction(db, async (transaction) => {
         const queueRef   = doc(db, "queue", "daily_queue");
@@ -68,6 +70,7 @@ export default function AssignStaffModal({ open, onClose, patient }) {
         }
 
         const queueNumber = queueDoc.exists() ? (queueDoc.data().lastNumberIssued || 0) + 1 : 1;
+        issuedQueueNumber = queueNumber;
         const arrivedAt   = Timestamp.now();
         const staffSignature = profile?.fullName || user?.email || 'System/Admin';
 
@@ -106,11 +109,15 @@ export default function AssignStaffModal({ open, onClose, patient }) {
         }
       });
 
+      const prefix = getTicketPrefix(patient);
+      const formattedTicket = `${prefix ? `${prefix}-` : ''}${String(issuedQueueNumber).padStart(3, '0')}`;
+
       const staffSignatureForLog = profile?.fullName || user?.email || 'System/Admin';
       sendPushNotification({
         ownerId: patient.ownerId,
         status: 'arrived',
         petName: patient.petName,
+        ticketNumber: formattedTicket,
         appointmentId: patient.id,
         sentBy: staffSignatureForLog,
       });

@@ -217,6 +217,11 @@ export function usePatientManager(onClientSelected) { // <-- Added callback prop
   }, [selectedClient]);
 
   const handleSelectClient = (client) => {
+    if (!client) {
+      setSelectedClient(null);
+      setIsEditing(false);
+      return;
+    }
     let reps = client.emergencyContacts ||[];
     if (reps.length === 0 && (client.emergencyName || client.emergencyPhone)) reps =[{ name: client.emergencyName || '', phone: client.emergencyPhone || '', relation: 'Primary' }];
     const cleanClient = {

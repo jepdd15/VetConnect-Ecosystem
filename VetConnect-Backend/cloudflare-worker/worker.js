@@ -111,8 +111,17 @@ const DEFAULT_TEMPLATES = {
 };
 
 function interpolateTemplate(template, data) {
+  const fallbacks = {
+    vetName: 'our veterinary team',
+    staffName: 'our clinic staff',
+    petName: 'your pet',
+  };
   return template.replace(/\{(\w+)\}/g, (match, key) => {
-    return data[key] !== undefined && data[key] !== null ? String(data[key]) : match;
+    const val = data[key];
+    if (val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== 'Unassigned') {
+      return String(val);
+    }
+    return fallbacks[key] !== undefined ? fallbacks[key] : '';
   });
 }
 
@@ -712,10 +721,37 @@ async function handleAppointmentReminders(env) {
 
     if (toSend.length === 0) { skipped++; continue; }
 
+    const scheduledTime = f.scheduledTime?.stringValue || '';
+    const assignedVet = f.assignedVet?.stringValue || 'Unassigned';
+
     for (const { stage, templateKey, days } of toSend) {
       const template = DEFAULT_TEMPLATES[templateKey] || DEFAULT_TEMPLATES.reminder;
-      const title = template.title.replace(/\{petName\}/g, petName).replace(/\{days\}/g, days);
-      const body = template.body.replace(/\{petName\}/g, petName).replace(/\{days\}/g, days);
+
+      const schDate = new Date(schTs);
+      const dateStr = schDate.toLocaleDateString('en-PH', {
+        timeZone: 'Asia/Manila',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      const timeStr = scheduledTime || schDate.toLocaleTimeString('en-PH', {
+        timeZone: 'Asia/Manila',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+      const vetNameVal = assignedVet && assignedVet !== 'Unassigned' ? assignedVet : 'our veterinary team';
+
+      const interpolate = (str) =>
+        str
+          .replace(/\{petName\}/g,  petName)
+          .replace(/\{days\}/g,     days)
+          .replace(/\{time\}/g,     timeStr)
+          .replace(/\{date\}/g,     dateStr)
+          .replace(/\{vetName\}/g,  vetNameVal);
+
+      const title = interpolate(template.title);
+      const body = interpolate(template.body);
 
       try {
         const now = new Date().toISOString();
@@ -953,7 +989,9 @@ async function handleBalanceReminders(env) {
 
     const amount = totalBalance.toLocaleString(undefined, { maximumFractionDigits: 2 });
     const title  = template.title;
-    const body   = template.body.replace(/\{amount\}/g, amount);
+    const body   = template.body
+      .replace(/\{amount\}/g, amount)
+      .replace(/\{ownerName\}/g, ownerName || 'Client');
 
     // Push notification (primary channel)
     let pushOk = false;

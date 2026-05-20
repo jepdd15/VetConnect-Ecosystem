@@ -19,7 +19,7 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
 
   const columns = [
     {
-      field: 'fullName', headerName: 'Staff Name', flex: 1.8,
+      field: 'fullName', headerName: 'Staff Name', flex: 1.8, minWidth: 200,
       renderCell: (p) => {
         const cleanName = p.value ? p.value.replace(/^(Dr\.|Mr\.|Mrs\.|Ms\.)\s*/i, '') : '';
         return (
@@ -75,7 +75,7 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
       }
     },
     {
-      field: 'actions', headerName: 'Actions', flex: 0.7, align: 'center', headerAlign: 'center',
+      field: 'actions', headerName: 'Actions', flex: 0.7, minWidth: 100, align: 'center', headerAlign: 'center',
       renderCell: (p) => (
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', gap: 1 }}>
           <Tooltip title="Edit Profile"><IconButton color="primary" size="small" onClick={() => onEdit(p.row)}><EditIcon fontSize="small" /></IconButton></Tooltip>

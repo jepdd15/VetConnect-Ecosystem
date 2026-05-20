@@ -307,7 +307,7 @@ export default function ServiceActivityLog() {
 
       {/* Data table */}
       {!loading && !error && filteredLogs.length > 0 && (
-        <Table stickyHeader={false} size="small" sx={{ bgcolor: 'transparent' }}>
+        <Table stickyHeader={false} size="small" sx={{ bgcolor: 'transparent', minWidth: 830 }}>
           <TableHead>
             <TableRow>
               <TableCell sx={{ ...headerSx, pl: 3, minWidth: 130 }}>Timestamp</TableCell>

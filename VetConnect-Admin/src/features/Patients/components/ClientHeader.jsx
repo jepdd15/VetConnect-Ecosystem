@@ -1,5 +1,6 @@
 import React from 'react';
-import { Box, Typography, Avatar, Chip, Button, Stack, Divider } from '@mui/material';
+import { Box, Typography, Avatar, Chip, Button, Stack, Divider, IconButton } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../../../theme/designTokens';
@@ -28,7 +29,7 @@ function isConsentWithdrawal(client) {
   return client.deletionRequested === true && (client.consentVersion === null || client.consentVersion === undefined);
 }
 
-export default function ClientHeader({ client, balance, isEditing, onEdit, onCancel, onSave, engagementKPIs, onProcessErasure }) {
+export default function ClientHeader({ client, balance, isEditing, onEdit, onCancel, onSave, engagementKPIs, onProcessErasure, onBack }) {
   const hasDebt = balance > 0;
 
   // T2.133: Contact freshness — compute days since last profile update.
@@ -46,7 +47,9 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
   return (
     <>
     <Box sx={{
-        px: 4, py: 2.5,
+        px: { xs: 2, md: 4 },
+        pl: { xs: 8, md: 4 },
+        py: 2.5,
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         bgcolor: isEditing ? 'rgba(239, 235, 233, 0.95)' : COLORS.cardBg,
         borderBottom: isEditing ? `3px solid ${COLORS.accent}` : `1px solid ${COLORS.borderLight}`,
@@ -55,6 +58,11 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
         
         {/* LEFT SIDE: HIGH DENSITY IDENTITY */}
         <Box sx={{ display: 'flex', gap: 2.5, alignItems: 'center', flex: 1 }}>
+            {onBack && (
+              <IconButton onClick={onBack} sx={{ color: COLORS.accent, mr: -1 }}>
+                <ArrowBackIcon />
+              </IconButton>
+            )}
             <Avatar sx={{ width: 64, height: 64, bgcolor: COLORS.accent, fontFamily: FONT, fontSize: 28, fontWeight: 900, boxShadow: 2 }}>
               {client.fullName ? client.fullName[0].toUpperCase() : '?'}
             </Avatar>
@@ -229,7 +237,8 @@ export default function ClientHeader({ client, balance, isEditing, onEdit, onCan
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        px: 4,
+        px: { xs: 2, md: 4 },
+        pl: { xs: 8, md: 4 },
         py: 1.5,
         bgcolor: COLORS.dangerSurface,
         borderBottom: `2px solid ${COLORS.danger}`,

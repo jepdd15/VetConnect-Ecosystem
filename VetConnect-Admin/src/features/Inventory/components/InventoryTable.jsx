@@ -118,7 +118,7 @@ const getExpiryStatus = (expiryDate) => {
         '&::-webkit-scrollbar-thumb': { background: COLORS.accent, borderRadius: 0 },
         '&::-webkit-scrollbar-thumb:hover': { background: COLORS.brand }
     }}>
-      <Table stickyHeader size="small" sx={{ bgcolor: COLORS.cardBg }}>
+      <Table stickyHeader size="small" sx={{ minWidth: 1100, bgcolor: COLORS.cardBg }}>
         <TableHead>
           <TableRow>
             <SortableHeader id="itemName" label="PRODUCT NAME" pl={3} />

@@ -42,11 +42,12 @@ function getTomorrowRange() {
  * Unknown tokens are left unchanged so we never surface undefined to the user.
  */
 function interpolate(template, vars) {
+  const cleanVet = vars.vetName && vars.vetName !== 'Unassigned' ? vars.vetName : 'our veterinary team';
   return template
     .replace(/\{petName\}/g,      vars.petName      || 'your pet')
     .replace(/\{time\}/g,         vars.time          || '')
     .replace(/\{date\}/g,         vars.date          || '')
-    .replace(/\{vetName\}/g,      vars.vetName       || '')
+    .replace(/\{vetName\}/g,      cleanVet)
     .replace(/\{ticketNumber\}/g, vars.ticketNumber  || '')
     .replace(/\{amount\}/g,       vars.amount        || '');
 }

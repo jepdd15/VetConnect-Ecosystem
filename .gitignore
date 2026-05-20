@@ -87,3 +87,39 @@ files-to-remove.txt
 
 # Branded architecture diagram (referenced from gitignored Appendix I only)
 system_architecture_branded.png
+
+# Root level non-code files
+CHAPTER4_COMBINED.html
+CHAPTER4_COMBINED.pdf
+CHAPTER4_HW_SW_REQUIREMENTS.html
+CHAPTER4_HW_SW_REQUIREMENTS.pdf
+CHAPTER4_ISO25010_EVALUATION.html
+CHAPTER4_ISO25010_EVALUATION.pdf
+CHAPTER4_SUS_EVALUATION.html
+CHAPTER4_SUS_EVALUATION.pdf
+Chapter 1 - 3 revised (20-5-26).pdf
+Chapter-1-3-revised-2026-05-20.txt
+Chapter-4 Vetconnect.pdf
+Chapter-4-extracted.txt
+Chapter-5 Vetconnect.pdf
+DROPPED_PROCESS_FLOWCHARTS.html
+DROPPED_PROCESS_FLOWCHARTS.pdf
+DROPPED_SYSTEM_ARCHITECTURE.html
+DROPPED_SYSTEM_ARCHITECTURE.pdf
+IEC_ISO-and-SUS-survey-sheet.xlsx
+OFFICIAL_APPENDIX_A_INTERVIEW_OFFICIAL(guide and 1 transcript).pdf
+OFFICIAL_APPENDIX_A_INTERVIEW_OFFICIAL_FIELDWORK_COMPLETE.pdf
+Saan-Sa-UdD-TOC-APPENDIX-CV.pdf
+Saan-Sa-UdD-extract.txt
+VETCONNECT_ERD.dbml
+VETCONNECT_ERD_CORE.dbml
+VETCONNECT_ISO25010_Computation_Results.xlsx
+VETCONNECT_SUS_50rrespondents.xlsx
+VETCONNECT_SUS_Calculation_Results.xlsx
+VetConnect_IEC_ISO_form.pdf
+VetConnect_IEC_ISO_form_v2_SpelledOutLegend.pdf
+VetConnect_SUS_4up-2.pdf
+VetConnect_SUS_form.pdf
+ch5_vc.txt
+iso_form.txt
+sus_form.txt

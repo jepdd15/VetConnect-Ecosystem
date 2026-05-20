@@ -163,11 +163,56 @@ async function getCustomTemplate(status) {
  * @param {object}      data          - Interpolation data: petName, vetName, ticketNumber, etc.
  * @returns {{ logTitle: string|null, logBody: string|null }}
  */
+/**
+ * Helper to convert Timestamps or Date objects into clean Manila-localized string.
+ */
+function formatDateValue(date) {
+  if (!date) return '';
+  try {
+    const d = date.toDate ? date.toDate() : new Date(date);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Resolves the human-readable title and body that should be stored in the
+ * notification_log document. Resolution order:
+ *   1. Explicit overrides provided by the caller (customTitle / customBody)
+ *   2. Admin-customised Firestore template for the status (already applied to
+ *      finalTitle / finalBody by the time this is called)
+ *   3. DEFAULT_TEMPLATES[status] — the same defaults the Worker would use
+ *   4. null — leaves the log entry blank (Worker generated, unknown template)
+ *
+ * Placeholders like {petName} are interpolated with the available data object.
+ * Unknown placeholders are left as-is so the log record remains truthful.
+ *
+ * @param {string|null} resolvedTitle - Title already resolved from Firestore or caller
+ * @param {string|null} resolvedBody  - Body already resolved from Firestore or caller
+ * @param {string}      status        - Appointment / notification status key
+ * @param {object}      data          - Interpolation data: petName, vetName, ticketNumber, etc.
+ * @returns {{ logTitle: string|null, logBody: string|null }}
+ */
 function resolveTemplateForLog(resolvedTitle, resolvedBody, status, data) {
   const interpolate = (str) =>
-    str.replace(/\{(\w+)\}/g, (match, key) =>
-      data[key] !== undefined ? String(data[key]) : match,
-    );
+    str.replace(/\{(\w+)\}/g, (match, key) => {
+      const val = data[key];
+      const fallbacks = {
+        vetName: 'our veterinary team',
+        staffName: 'our clinic staff',
+        petName: 'your pet',
+      };
+      if (val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== 'Unassigned') {
+        return String(val);
+      }
+      return fallbacks[key] !== undefined ? fallbacks[key] : '';
+    });
 
   // If the dispatch layer already resolved a title+body (custom template or
   // explicit override), just interpolate and use it.
@@ -206,6 +251,7 @@ function resolveTemplateForLog(resolvedTitle, resolvedBody, status, data) {
  * @param {string} [params.serviceName] - Service name for service progress templates (T4.202)
  * @param {string} [params.staffName] - Staff performing the service — service-started only (T4.202)
  * @param {string} [params.nextService] - Next service hint or "All services complete." — service-completed only (T4.202)
+ * @param {string|Date|Timestamp} [params.date] - Date of the appointment (T4.Forensic)
  */
 export function sendPushNotification({
   ownerId,
@@ -220,6 +266,8 @@ export function sendPushNotification({
   serviceName,
   staffName,
   nextService,
+  amount,
+  date,
 }) {
   // Guard: walk-ins and unknown owners have no mobile app
   if (!ownerId || ownerId === 'WALK_IN_USER' || ownerId === 'UNKNOWN') return;
@@ -228,14 +276,14 @@ export function sendPushNotification({
   _dispatchPush({
     ownerId, status, petName, vetName, ticketNumber,
     appointmentId, customTitle, customBody, sentBy,
-    serviceName, staffName, nextService,
+    serviceName, staffName, nextService, amount, date,
   }).catch((err) => {
     console.error('[sendPushNotification] Silent failure:', err?.message || err);
   });
 }
 
 // ─── Internal dispatch (async, never exposed) ────────────────────────────────
-async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, appointmentId, customTitle, customBody, sentBy, serviceName, staffName, nextService }) {
+async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, appointmentId, customTitle, customBody, sentBy, serviceName, staffName, nextService, amount, date }) {
   const [pushToken, workerUrl, channelSettings] = await Promise.all([
     resolvePushToken(ownerId),
     getWorkerUrl(),
@@ -258,6 +306,7 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
 
   // Resolve interpolated title+body for logging — shared by all channels.
   // T4.202: serviceName, staffName, nextService added for service progress templates.
+  const formattedDate = typeof date === 'string' ? date : formatDateValue(date);
   const interpolationData = {
     petName:      petName      || 'your pet',
     vetName:      vetName      || '',
@@ -265,6 +314,8 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
     serviceName:  serviceName  || '',
     staffName:    staffName    || '',
     nextService:  nextService  || '',
+    amount:       amount !== undefined && amount !== null ? String(amount) : '',
+    date:         formattedDate,
   };
   const { logTitle, logBody } = resolveTemplateForLog(finalTitle, finalBody, status, interpolationData);
 
@@ -304,6 +355,8 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
         petName:      petName      || 'your pet',
         vetName:      vetName      || '',
         ticketNumber: ticketNumber || '',
+        amount:       amount !== undefined && amount !== null ? String(amount) : '',
+        date:         formattedDate,
         appointmentId: appointmentId || '',
         // T4.202: service progress placeholders forwarded to Worker for interpolation
         ...(serviceName  ? { serviceName  } : {}),
@@ -354,9 +407,18 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
     const smsTemplate = SMS_TEMPLATES[status];
     if (smsTemplate) {
       const interpolate = (str) =>
-        str.replace(/\{(\w+)\}/g, (match, key) =>
-          interpolationData[key] !== undefined ? String(interpolationData[key]) : match,
-        );
+        str.replace(/\{(\w+)\}/g, (match, key) => {
+          const val = interpolationData[key];
+          const fallbacks = {
+            vetName: 'our veterinary team',
+            staffName: 'our clinic staff',
+            petName: 'your pet',
+          };
+          if (val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== 'Unassigned') {
+            return String(val);
+          }
+          return fallbacks[key] !== undefined ? fallbacks[key] : '';
+        });
       const smsMessage = interpolate(smsTemplate);
 
       fetch(baseEndpoint + '/sms', {

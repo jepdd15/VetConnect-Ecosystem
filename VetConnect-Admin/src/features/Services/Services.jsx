@@ -92,83 +92,86 @@ export default function Services() {
       {/* ── Header / Toolbar ── */}
       <Paper sx={{
         bgcolor: COLORS.cream, border: '0px', borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0,
-        p: 2.5, px: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        flexWrap: 'wrap', gap: 2.5, flexShrink: 0,
+        p: { xs: 1.5, sm: 2.5 }, pl: { xs: 8, md: 4 }, pr: { xs: 2, md: 4 }, display: 'flex', flexDirection: 'column',
+        gap: { xs: 1.5, sm: 2.5 }, flexShrink: 0,
       }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap', flexGrow: 1 }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+        {/* Top Row: Title & Action Button */}
+        <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, fontSize: '1.5rem', lineHeight: 1 }}>
             Services
           </Typography>
 
-          {tab === 0 && (
-            <>
-              <TextField
-                variant="outlined" size="small" placeholder="Search services..." value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                InputProps={{
-                  startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted }} /></InputAdornment>,
-                }}
-                sx={{
-                  flex: 1, maxWidth: 350, minWidth: 180,
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: 0, bgcolor: COLORS.formBg,
-                    '& fieldset': { borderColor: COLORS.border },
-                    '&:hover fieldset': { borderColor: COLORS.accent },
-                    '&.Mui-focused fieldset': { borderColor: COLORS.accent },
-                  },
-                }}
-              />
-
-              <FormControl size="small" sx={{ width: 180, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 0 }}>
-                <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
-                  <MenuItem value="All">All Departments</MenuItem>
-                  {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
-                </Select>
-              </FormControl>
-
-              <FormControl size="small" sx={{ width: 160, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 0 }}>
-                <Select value={filterSpecies} onChange={(e) => setFilterSpecies(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
-                  <MenuItem value="All">All Species</MenuItem>
-                  <MenuItem value="Universal">🐾 Universal</MenuItem>
-                  <MenuItem value="Canine">🐶 Canine</MenuItem>
-                  <MenuItem value="Feline">🐱 Feline</MenuItem>
-                </Select>
-              </FormControl>
-
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={showArchived}
-                    onChange={(e) => setShowArchived(e.target.checked)}
-                    size="small"
-                    sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.warning }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.warning } }}
-                  />
-                }
-                label={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <ArchiveIcon sx={{ fontSize: 14, color: showArchived ? COLORS.warning : '#9E9E9E' }} />
-                    <Typography variant="caption" sx={{ fontWeight: 900, color: showArchived ? COLORS.warning : '#9E9E9E', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      Archived
-                    </Typography>
-                  </Box>
-                }
-              />
-
-              <Typography variant="body2" sx={{ color: COLORS.accent, fontStyle: 'italic', fontWeight: 900, letterSpacing: 0.5, ml: 1 }}>
-                {filteredServices.length} {filteredServices.length === 1 ? 'Record' : 'Records'}
-              </Typography>
-            </>
+          {tab === 0 && !showArchived && (
+            <Button
+              variant="contained" startIcon={<AddIcon />}
+              sx={{ bgcolor: COLORS.sky, fontWeight: 900, boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 0.5, px: { xs: 2, sm: 3 }, whiteSpace: 'nowrap', borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
+              onClick={() => { setSelectedItem(null); setOpen(true); }}
+            >
+              New Service
+            </Button>
           )}
         </Box>
 
-        {tab === 0 && !showArchived && (
-          <Button
-            variant="contained" startIcon={<AddIcon />}
-            sx={{ bgcolor: COLORS.sky, fontWeight: 900, boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 0.5, px: 3, whiteSpace: 'nowrap', borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
-            onClick={() => { setSelectedItem(null); setOpen(true); }}
-          >
-            New Service
-          </Button>
+        {/* Bottom Row: Filters (Tab 0 only) */}
+        {tab === 0 && (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1.5, sm: 2.5 }, alignItems: 'center', width: '100%' }}>
+            <TextField
+              variant="outlined" size="small" placeholder="Search services..." value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: COLORS.textMuted }} /></InputAdornment>,
+              }}
+              sx={{
+                flex: { xs: '1 1 100%', sm: '1 1 200px', md: '1 1 350px' }, maxWidth: { xs: '100%', sm: 350 },
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 0, bgcolor: COLORS.formBg,
+                  '& fieldset': { borderColor: COLORS.border },
+                  '&:hover fieldset': { borderColor: COLORS.accent },
+                  '&.Mui-focused fieldset': { borderColor: COLORS.accent },
+                },
+              }}
+            />
+
+            <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 0 }}>
+              <Select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
+                <MenuItem value="All">All Departments</MenuItem>
+                {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ width: { xs: '100%', sm: 160 }, bgcolor: 'rgba(255,255,255,0.7)', borderRadius: 0 }}>
+              <Select value={filterSpecies} onChange={(e) => setFilterSpecies(e.target.value)} displayEmpty sx={{ '& fieldset': { border: 'none' }, fontWeight: 'bold' }}>
+                <MenuItem value="All">All Species</MenuItem>
+                <MenuItem value="Universal">🐾 Universal</MenuItem>
+                <MenuItem value="Canine">🐶 Canine</MenuItem>
+                <MenuItem value="Feline">🐱 Feline</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControlLabel
+              sx={{ mr: 0, ml: { xs: 0, sm: 1 } }}
+              control={
+                <Switch
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                  size="small"
+                  sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.warning }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.warning } }}
+                />
+              }
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <ArchiveIcon sx={{ fontSize: 14, color: showArchived ? COLORS.warning : '#9E9E9E' }} />
+                  <Typography variant="caption" sx={{ fontWeight: 900, color: showArchived ? COLORS.warning : '#9E9E9E', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Archived
+                  </Typography>
+                </Box>
+              }
+            />
+
+            <Typography variant="body2" sx={{ color: COLORS.accent, fontStyle: 'italic', fontWeight: 900, letterSpacing: 0.5, ml: { xs: 0, sm: 1 }, width: { xs: '100%', sm: 'auto' } }}>
+              {filteredServices.length} {filteredServices.length === 1 ? 'Record' : 'Records'}
+            </Typography>
+          </Box>
         )}
       </Paper>
 

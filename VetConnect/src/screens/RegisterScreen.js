@@ -76,6 +76,7 @@ const RegisterScreen = ({ navigation }) => {
   const [waiverPolicy, setWaiverPolicy] = useState(null);
   const [dpaLoading, setDpaLoading] = useState(true);
   const [showFullPolicy, setShowFullPolicy] = useState(false);
+  const [showFullWaiver, setShowFullWaiver] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +107,8 @@ const RegisterScreen = ({ navigation }) => {
             versionNumber: w.data().versionNumber,
             versionDocId:  w.id,
             title:         w.data().title,
+            bodyText:      w.data().bodyText,
+            summary:       w.data().summary ?? null,
           });
         }
       } catch (err) {
@@ -664,19 +667,33 @@ const RegisterScreen = ({ navigation }) => {
 
               {/* Liability Waiver Checkbox */}
               {waiverPolicy && (
-                <TouchableOpacity
-                  style={[styles.checkboxRow, { marginTop: 10 }]}
-                  onPress={() => setWaiverConsent(!waiverConsent)}
-                >
-                  <MaterialIcons
-                    name={waiverConsent ? 'check-box' : 'check-box-outline-blank'}
-                    size={24}
-                    color={waiverConsent ? '#3ABEF9' : '#999'}
-                  />
-                  <Text style={styles.checkboxText}>
-                    I have read and agree to the Liability Waiver *
+                <View style={{ marginTop: 10 }}>
+                  <Text style={styles.policyTitle}>{waiverPolicy.title}</Text>
+                  <Text style={styles.policyPreview}>
+                    {showFullWaiver
+                      ? waiverPolicy.bodyText
+                      : (waiverPolicy.summary || (waiverPolicy.bodyText || '').substring(0, 200) + '...')}
                   </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setShowFullWaiver(!showFullWaiver)}>
+                    <Text style={styles.viewPolicyLink}>
+                      {showFullWaiver ? 'HIDE FULL WAIVER' : 'VIEW FULL WAIVER'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.checkboxRow}
+                    onPress={() => setWaiverConsent(!waiverConsent)}
+                  >
+                    <MaterialIcons
+                      name={waiverConsent ? 'check-box' : 'check-box-outline-blank'}
+                      size={24}
+                      color={waiverConsent ? '#3ABEF9' : '#999'}
+                    />
+                    <Text style={styles.checkboxText}>
+                      I have read and agree to the Liability Waiver *
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               )}
 
               {/* Promo Opt-In Checkbox */}

@@ -985,10 +985,10 @@ export default function Records() {
       {/* 1. COMMAND STRIP HEADER */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper elevation={0} sx={{ 
-          p: 2.5, px: 4, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center',
+          py: 2.5, px: { xs: 2, md: 4 }, pl: { xs: 8, md: 4 }, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center',
           bgcolor: '#FFF8E1', borderBottom: '2px solid #5D4037', borderTop: 'none', borderLeft: 'none', borderRight: 'none', borderRadius: 0
         }}>
-          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: 1, fontSize: '1.5rem', lineHeight: 1 }}>
+          <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0, mr: { xs: 0, sm: 1 }, fontSize: { xs: '1.25rem', sm: '1.5rem' }, lineHeight: 1 }}>
             VISIT LOG
           </Typography>
 
@@ -1008,7 +1008,10 @@ export default function Records() {
               style: { color: COLORS.textPrimary, fontWeight: '1000', fontSize: '0.85rem', fontFamily: 'Inter' }
             }}
             sx={{
-              flex: 1, maxWidth: 350, minWidth: 180,
+              width: { xs: '100%', sm: 'auto' },
+              flex: { xs: 'none', sm: 1 },
+              maxWidth: { xs: '100%', sm: 350 },
+              minWidth: 180,
               '& .MuiOutlinedInput-root': {
                 borderRadius: 0, bgcolor: COLORS.formBg,
                 '& fieldset': { borderColor: COLORS.border },
@@ -1018,9 +1021,9 @@ export default function Records() {
             }}
           />
 
-          <Box sx={{ flexGrow: 1 }} />
+          <Box sx={{ flexGrow: 1, display: { xs: 'none', sm: 'block' } }} />
 
-          <Stack direction="row" spacing={2} alignItems="center">
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ width: { xs: '100%', sm: 'auto' }, justifyContent: { xs: 'space-between', sm: 'flex-end' }, mt: { xs: 1, sm: 0 } }}>
             <ToggleButtonGroup
               value={viewMode} exclusive
               onChange={(e, v) => v && setViewMode(v)}
@@ -1035,8 +1038,6 @@ export default function Records() {
                   <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '1.2rem', lineHeight: 1 }}>{groupedRecords.length}</Typography>
                   <Typography variant="caption" sx={{ fontWeight: '1000', opacity: 0.6, fontSize: '0.62rem', display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     {facets.petSpecies || ''} {activeSilo} VISITS
-                    {facets.serviceCategory ? ` • ${facets.serviceCategory}` : ''}
-                    {facets.assignedVetId ? ` • ${vets.find(v => v.id === facets.assignedVetId)?.fullName || 'VET'}` : ''}
                   </Typography>
               </Box>
               <InfoIcon sx={{ color: '#5D4037', opacity: 0.2 }} />
@@ -1044,7 +1045,7 @@ export default function Records() {
         </Paper>
 
         {/* Row 2: Facet filters */}
-        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', px: 4, pb: 1.5, pt: 1.5, bgcolor: '#FFF8E1', borderBottom: '1px solid #5D403733' }}>
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', px: { xs: 2, md: 4 }, pl: { xs: 8, md: 4 }, pb: 1.5, pt: 1.5, bgcolor: '#FFF8E1', borderBottom: '1px solid #5D403733' }}>
           <FormControl size="small" sx={{ minWidth: 150 }}>
             <Select
               value={facets.assignedVetId}
@@ -1225,7 +1226,7 @@ export default function Records() {
         </Box>
 
         {/* 1.1 SILO TABS (NEW) */}
-        <Box sx={{ bgcolor: 'white', borderBottom: '2px solid #5D403733', px: 4 }}>
+        <Box sx={{ bgcolor: 'white', borderBottom: '2px solid #5D403733', px: { xs: 2, md: 4 }, pl: { xs: 8, md: 4 } }}>
            <Tabs
              value={activeTab}
              onChange={(e, v) => setActiveTab(v)}
@@ -1247,7 +1248,7 @@ export default function Records() {
         </Box>
 
         {/* 1.2 PER-TAB KPI STRIP */}
-        <Box sx={{ px: 4, py: 0.75, bgcolor: COLORS.formBg, borderBottom: `1px solid ${COLORS.borderLight}`, display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Box sx={{ px: { xs: 2, md: 4 }, pl: { xs: 8, md: 4 }, py: 0.75, bgcolor: COLORS.formBg, borderBottom: `1px solid ${COLORS.borderLight}`, display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
           {activeTab === 0 && (
             <>
               <Chip label={`${tabStatusCounts['pending'] || 0} pending`} size="small" sx={{ height: 22, fontSize: '0.6rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiOrangeBg, border: `1px solid ${COLORS.kpiOrangeBorder}`, color: COLORS.warning }} />
@@ -1309,6 +1310,10 @@ export default function Records() {
           sx={{
             border: 'none',
             bgcolor: 'white',
+            '&::-webkit-scrollbar': { height: '8px', width: '8px' },
+            '&::-webkit-scrollbar-track': { background: '#FFF8E1' },
+            '&::-webkit-scrollbar-thumb': { background: '#5D4037', borderRadius: '4px' },
+            '&::-webkit-scrollbar-thumb:hover': { background: '#8D6E63' },
             '& .forensic-header': {
               bgcolor: '#FFF8E1 !important',
               color: '#5D4037',
@@ -1357,11 +1362,11 @@ export default function Records() {
         onClose={handleCloseAudit}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 0, border: '2px solid #5D4037', p: 0, overflow: 'hidden', boxShadow: '10px 10px 0px rgba(93, 64, 55, 0.1)', maxHeight: '80vh' } }}
+        PaperProps={{ sx: { borderRadius: 0, border: '2px solid #5D4037', p: 0, overflow: 'hidden', boxShadow: '10px 10px 0px rgba(93, 64, 55, 0.1)', maxHeight: '80vh', m: { xs: 2, sm: 'auto' }, width: { xs: 'calc(100% - 32px)', sm: '100%' } } }}
       >
         {activeAuditRow && (
           <Box>
-            <Box sx={{ bgcolor: '#FFF8E1', p: 1.5, borderBottom: '1px solid #5D4037', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ bgcolor: '#FFF8E1', p: 1.5, borderBottom: '1px solid #5D4037', display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', gap: 1 }}>
               <Typography sx={{ fontWeight: '1000', color: '#5D4037', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 1 }}>
                 <TimelineIcon fontSize="small" /> {activeAuditRow.petName || 'Unknown'} — {(() => { const svcNames = (activeAuditRow.services || []).map(s => s.name).filter(Boolean); if (svcNames.length === 0) return activeAuditRow.serviceType || 'Visit'; if (svcNames.length <= 2) return svcNames.join(', '); return `${svcNames.slice(0, 2).join(', ')} +${svcNames.length - 2} more`; })()}
               </Typography>
@@ -1398,7 +1403,7 @@ export default function Records() {
               </Stack>
             </Box>
             
-            <Box sx={{ p: 2, maxHeight: 400, overflowY: 'auto', bgcolor: 'white' }}>
+            <Box sx={{ p: 2, maxHeight: 'calc(80vh - 140px)', overflowY: 'auto', bgcolor: 'white' }}>
               {/* IDENTITY EDIT FORM (T2.67) */}
               {editIdentity && canEdit && (
                 <Box sx={{ mb: 2, p: 1.5, border: `1px solid ${COLORS.accent}`, bgcolor: '#FAF9F7' }}>
@@ -1553,23 +1558,22 @@ export default function Records() {
                 </Box>
               )}
 
-            </Box>
-
-            <Box sx={{ p: 1.5, borderTop: '1px solid #D7CCC8' }}>
-               <ForensicMetricGrid
-                 pulse={activeAuditRow.clinicalPulse || []}
-                 createdAt={activeAuditRow.createdAt}
-                 targetDate={activeAuditRow.jsScheduled}
-                 cumulativeTotals={cumulativeTotals}
-                 liveAge={!activeAuditRow.forensicSeal && !TERMINAL_STATUSES.has(activeAuditRow.status?.toLowerCase())}
-               />
+              <Box sx={{ mt: 3, borderTop: '1px solid #D7CCC8', pt: 1.5 }}>
+                 <ForensicMetricGrid
+                   pulse={activeAuditRow.clinicalPulse || []}
+                   createdAt={activeAuditRow.createdAt}
+                   targetDate={activeAuditRow.jsScheduled}
+                   cumulativeTotals={cumulativeTotals}
+                   liveAge={!activeAuditRow.forensicSeal && !TERMINAL_STATUSES.has(activeAuditRow.status?.toLowerCase())}
+                 />
+              </Box>
             </Box>
 
             <Divider />
 
             <Box sx={{ p: 1, bgcolor: '#FAF9F7' }}>
               {canEdit ? (
-                <Stack direction="row" spacing={1}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <Button
                     fullWidth size="small" variant="contained"
                     startIcon={<EditCalendarIcon />}
@@ -1662,14 +1666,13 @@ export default function Records() {
         )}
       </Dialog>
 
-      {/* --- 🧬 RESCHEDULE MODAL --- */}
-      <Dialog open={openReschedule} onClose={() => setOpenReschedule(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 0, border: '4px solid #5D4037' } }}>
+       <Dialog open={openReschedule} onClose={() => setOpenReschedule(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 0, border: '4px solid #5D4037', m: { xs: 2, sm: 'auto' }, width: { xs: 'calc(100% - 32px)', sm: '100%' } } }}>
         <DialogTitle sx={{ bgcolor: '#FFF8E1', color: '#5D4037', fontWeight: '1000', borderBottom: '2px solid #5D4037' }}>
            RESCHEDULE VISIT
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
            <Typography variant="caption" sx={{ fontWeight: '1000', color: '#795548', mb: 2, display: 'block' }}>
-              Rescheduling will update the visit timeline and log an audit event.
+               Rescheduling will update the visit timeline and log an audit event.
            </Typography>
            
            <TextField
@@ -1690,12 +1693,12 @@ export default function Records() {
              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
            />
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037' }}>
-           <Button onClick={() => setOpenReschedule(false)} sx={{ fontWeight: '1000', color: '#757575' }}>Cancel</Button>
+        <DialogActions sx={{ p: 2, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037', flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1, sm: 0 }, alignItems: 'stretch' }}>
+           <Button fullWidth onClick={() => setOpenReschedule(false)} sx={{ fontWeight: '1000', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
            <Button 
-             variant="contained" 
+             fullWidth variant="contained" 
              disabled={!rescheduleData.newDate || !rescheduleData.reason.trim()}
-             sx={{ bgcolor: '#5D4037', fontWeight: '1000', px: 4, borderRadius: 0 }}
+             sx={{ bgcolor: '#5D4037', fontWeight: '1000', px: 4, borderRadius: 0, width: { xs: '100%', sm: 'auto' } }}
              onClick={handleReschedule}
            >
              Apply Shift
@@ -1703,9 +1706,8 @@ export default function Records() {
         </DialogActions>
       </Dialog>
 
-      {/* VOID DIALOG (T2.59) */}
       <Dialog open={voidDialog.open} onClose={() => setVoidDialog({ open: false, reason: '' })} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { borderRadius: 0, border: `4px solid ${COLORS.danger}` } }}>
+        PaperProps={{ sx: { borderRadius: 0, border: `4px solid ${COLORS.danger}`, m: { xs: 2, sm: 'auto' }, width: { xs: 'calc(100% - 32px)', sm: '100%' } } }}>
         <DialogTitle sx={{ bgcolor: COLORS.dangerSurface, color: COLORS.danger, fontWeight: '1000', borderBottom: `2px solid ${COLORS.danger}` }}>
           VOID VISIT
         </DialogTitle>
@@ -1720,18 +1722,17 @@ export default function Records() {
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: COLORS.dangerSurface, borderTop: `2px solid ${COLORS.danger}` }}>
-          <Button onClick={() => setVoidDialog({ open: false, reason: '' })} sx={{ fontWeight: '1000', color: '#757575' }}>Cancel</Button>
-          <Button variant="contained" disabled={!voidDialog.reason.trim()} onClick={confirmVoid}
-            sx={{ bgcolor: COLORS.danger, fontWeight: '1000', px: 4, borderRadius: 0 }}>
+        <DialogActions sx={{ p: 2, bgcolor: COLORS.dangerSurface, borderTop: `2px solid ${COLORS.danger}`, flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1, sm: 0 }, alignItems: 'stretch' }}>
+          <Button fullWidth onClick={() => setVoidDialog({ open: false, reason: '' })} sx={{ fontWeight: '1000', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
+          <Button fullWidth variant="contained" disabled={!voidDialog.reason.trim()} onClick={confirmVoid}
+            sx={{ bgcolor: COLORS.danger, fontWeight: '1000', px: 4, borderRadius: 0, width: { xs: '100%', sm: 'auto' } }}>
             Confirm Void
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* BULK RESCHEDULE DIALOG (T2.73) */}
       <Dialog open={bulkReschedule} onClose={() => setBulkReschedule(false)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { borderRadius: 0, border: '4px solid #5D4037' } }}>
+        PaperProps={{ sx: { borderRadius: 0, border: '4px solid #5D4037', m: { xs: 2, sm: 'auto' }, width: { xs: 'calc(100% - 32px)', sm: '100%' } } }}>
         <DialogTitle sx={{ bgcolor: '#FFF8E1', color: '#5D4037', fontWeight: '1000', borderBottom: '2px solid #5D4037' }}>
           BULK RESCHEDULE ({selectedRows.length} VISITS)
         </DialogTitle>
@@ -1750,18 +1751,17 @@ export default function Records() {
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037' }}>
-          <Button onClick={() => setBulkReschedule(false)} sx={{ fontWeight: '1000', color: '#757575' }}>Cancel</Button>
-          <Button variant="contained" disabled={!bulkDate || !bulkReason.trim()} onClick={handleBulkReschedule}
-            sx={{ bgcolor: '#5D4037', fontWeight: '1000', borderRadius: 0 }}>
+        <DialogActions sx={{ p: 2, bgcolor: '#FFF8E1', borderTop: '2px solid #5D4037', flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1, sm: 0 }, alignItems: 'stretch' }}>
+          <Button fullWidth onClick={() => setBulkReschedule(false)} sx={{ fontWeight: '1000', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
+          <Button fullWidth variant="contained" disabled={!bulkDate || !bulkReason.trim()} onClick={handleBulkReschedule}
+            sx={{ bgcolor: '#5D4037', fontWeight: '1000', borderRadius: 0, width: { xs: '100%', sm: 'auto' } }}>
             Reschedule All
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* BULK REASSIGN DIALOG (T2.74) */}
       <Dialog open={bulkReassign} onClose={() => setBulkReassign(false)} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { borderRadius: 0, border: `4px solid ${COLORS.medical}` } }}>
+        PaperProps={{ sx: { borderRadius: 0, border: `4px solid ${COLORS.medical}`, m: { xs: 2, sm: 'auto' }, width: { xs: 'calc(100% - 32px)', sm: '100%' } } }}>
         <DialogTitle sx={{ bgcolor: '#E3F2FD', color: COLORS.medical, fontWeight: '1000', borderBottom: `2px solid ${COLORS.medical}` }}>
           REASSIGN {selectedRows.length} VISITS
         </DialogTitle>
@@ -1779,10 +1779,10 @@ export default function Records() {
             </Select>
           </FormControl>
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: '#E3F2FD', borderTop: `2px solid ${COLORS.medical}` }}>
-          <Button onClick={() => setBulkReassign(false)} sx={{ fontWeight: '1000', color: '#757575' }}>Cancel</Button>
-          <Button variant="contained" disabled={!reassignVetId} onClick={handleBulkReassign}
-            sx={{ bgcolor: COLORS.medical, fontWeight: '1000', borderRadius: 0 }}>
+        <DialogActions sx={{ p: 2, bgcolor: '#E3F2FD', borderTop: `2px solid ${COLORS.medical}`, flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1, sm: 0 }, alignItems: 'stretch' }}>
+          <Button fullWidth onClick={() => setBulkReassign(false)} sx={{ fontWeight: '1000', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
+          <Button fullWidth variant="contained" disabled={!reassignVetId} onClick={handleBulkReassign}
+            sx={{ bgcolor: COLORS.medical, fontWeight: '1000', borderRadius: 0, width: { xs: '100%', sm: 'auto' } }}>
             Reassign All
           </Button>
         </DialogActions>
@@ -1791,37 +1791,41 @@ export default function Records() {
       {/* BULK ACTION FLOATING BAR (T2.73 / T2.74) */}
       {selectedRows.length > 0 && (
         <Box sx={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          bgcolor: COLORS.brand, color: 'white', px: 3, py: 1.5,
-          display: 'flex', alignItems: 'center', gap: 2,
+          position: 'fixed', bottom: { xs: 16, sm: 24 }, left: '50%', transform: 'translateX(-50%)',
+          bgcolor: COLORS.brand, color: 'white', px: { xs: 2, sm: 3 }, py: 1.5,
+          display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: 'center', gap: { xs: 1, sm: 2 },
           border: `2px solid ${COLORS.accent}`, boxShadow: '4px 4px 0px rgba(0,0,0,0.2)',
           zIndex: 1000,
+          width: { xs: 'calc(100% - 32px)', sm: 'auto' },
+          maxWidth: '600px',
         }}>
-          <Typography sx={{ fontWeight: '1000', fontSize: '0.8rem' }}>
+          <Typography sx={{ fontWeight: '1000', fontSize: '0.8rem', width: { xs: '100%', sm: 'auto' }, textAlign: 'center' }}>
             {selectedRows.length} selected
           </Typography>
-          <Button
-            size="small" variant="contained"
-            startIcon={<EditCalendarIcon />}
-            onClick={() => setBulkReschedule(true)}
-            sx={{ bgcolor: COLORS.accent, fontWeight: '1000', fontSize: '0.7rem', borderRadius: 0 }}
-          >
-            Bulk Reschedule
-          </Button>
-          <Button
-            size="small" variant="contained"
-            onClick={() => setBulkReassign(true)}
-            sx={{ bgcolor: COLORS.medical, fontWeight: '1000', fontSize: '0.7rem', borderRadius: 0 }}
-          >
-            Reassign Staff
-          </Button>
-          <Button
-            size="small" variant="outlined"
-            onClick={() => setSelectedRows([])}
-            sx={{ color: 'white', borderColor: 'white', fontWeight: '1000', fontSize: '0.7rem', borderRadius: 0 }}
-          >
-            Clear
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center', width: { xs: '100%', sm: 'auto' } }}>
+            <Button
+              size="small" variant="contained"
+              startIcon={<EditCalendarIcon />}
+              onClick={() => setBulkReschedule(true)}
+              sx={{ bgcolor: COLORS.accent, fontWeight: '1000', fontSize: '0.7rem', borderRadius: 0, flexGrow: { xs: 1, sm: 0 } }}
+            >
+              Bulk Reschedule
+            </Button>
+            <Button
+              size="small" variant="contained"
+              onClick={() => setBulkReassign(true)}
+              sx={{ bgcolor: COLORS.medical, fontWeight: '1000', fontSize: '0.7rem', borderRadius: 0, flexGrow: { xs: 1, sm: 0 } }}
+            >
+              Reassign Staff
+            </Button>
+            <Button
+              size="small" variant="outlined"
+              onClick={() => setSelectedRows([])}
+              sx={{ color: 'white', borderColor: 'white', fontWeight: '1000', fontSize: '0.7rem', borderRadius: 0, flexGrow: { xs: 1, sm: 0 } }}
+            >
+              Clear
+            </Button>
+          </Box>
         </Box>
       )}
 
@@ -1938,7 +1942,7 @@ export default function Records() {
         onClose={() => setOpenRevert(false)}
         maxWidth="xs"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 0, border: '4px solid #D32F2F' } }}
+        PaperProps={{ sx: { borderRadius: 0, border: '4px solid #D32F2F', m: { xs: 2, sm: 'auto' }, width: { xs: 'calc(100% - 32px)', sm: '100%' } } }}
       >
         <DialogTitle sx={{ bgcolor: '#FFEBEE', color: '#D32F2F', fontWeight: '1000', borderBottom: '2px solid #D32F2F' }}>
           REVERT STATUS
@@ -1962,13 +1966,13 @@ export default function Records() {
             </Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: '#FFEBEE', borderTop: '2px solid #D32F2F' }}>
-          <Button onClick={() => { setOpenRevert(false); setRevertReason(''); }} sx={{ fontWeight: '1000', color: '#757575' }}>Cancel</Button>
+        <DialogActions sx={{ p: 2, bgcolor: '#FFEBEE', borderTop: '2px solid #D32F2F', flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1, sm: 0 }, alignItems: 'stretch' }}>
+          <Button fullWidth onClick={() => { setOpenRevert(false); setRevertReason(''); }} sx={{ fontWeight: '1000', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
           <Button
-            variant="contained"
+            fullWidth variant="contained"
             disabled={!revertReason.trim() || submittingAction}
             onClick={handleActionRevertConfirm}
-            sx={{ bgcolor: '#D32F2F', fontWeight: '1000', borderRadius: 0 }}
+            sx={{ bgcolor: '#D32F2F', fontWeight: '1000', borderRadius: 0, width: { xs: '100%', sm: 'auto' } }}
           >
             {submittingAction ? 'Reverting...' : 'Confirm Revert'}
           </Button>
@@ -1980,7 +1984,7 @@ export default function Records() {
         onClose={() => setNoShowDialog({ open: false, reason: '' })}
         maxWidth="xs"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 0, border: `4px solid ${COLORS.danger}` } }}
+        PaperProps={{ sx: { borderRadius: 0, border: `4px solid ${COLORS.danger}`, m: { xs: 2, sm: 'auto' }, width: { xs: 'calc(100% - 32px)', sm: '100%' } } }}
       >
         <DialogTitle sx={{ bgcolor: COLORS.dangerSurface, color: COLORS.danger, fontWeight: '1000', borderBottom: `2px solid ${COLORS.danger}` }}>
           MARK AS NO-SHOW
@@ -1997,10 +2001,10 @@ export default function Records() {
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: COLORS.dangerSurface, borderTop: `2px solid ${COLORS.danger}` }}>
-          <Button onClick={() => setNoShowDialog({ open: false, reason: '' })} sx={{ fontWeight: '1000', color: '#757575' }}>Cancel</Button>
-          <Button variant="contained" disabled={!noShowDialog.reason.trim() || submittingAction} onClick={handleActionNoShowConfirm}
-            sx={{ bgcolor: COLORS.danger, fontWeight: '1000', borderRadius: 0 }}>
+        <DialogActions sx={{ p: 2, bgcolor: COLORS.dangerSurface, borderTop: `2px solid ${COLORS.danger}`, flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1, sm: 0 }, alignItems: 'stretch' }}>
+          <Button fullWidth onClick={() => setNoShowDialog({ open: false, reason: '' })} sx={{ fontWeight: '1000', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
+          <Button fullWidth variant="contained" disabled={!noShowDialog.reason.trim() || submittingAction} onClick={handleActionNoShowConfirm}
+            sx={{ bgcolor: COLORS.danger, fontWeight: '1000', borderRadius: 0, width: { xs: '100%', sm: 'auto' } }}>
             Confirm No-Show
           </Button>
         </DialogActions>
@@ -2011,7 +2015,7 @@ export default function Records() {
         onClose={() => setDeferDialog({ open: false, reason: '' })}
         maxWidth="xs"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 0, border: `4px solid #E65100` } }}
+        PaperProps={{ sx: { borderRadius: 0, border: `4px solid #E65100`, m: { xs: 2, sm: 'auto' }, width: { xs: 'calc(100% - 32px)', sm: '100%' } } }}
       >
         <DialogTitle sx={{ bgcolor: '#FFF3E0', color: '#E65100', fontWeight: '1000', borderBottom: '2px solid #E65100' }}>
           DEFER CLINICAL INTAKE
@@ -2028,10 +2032,10 @@ export default function Records() {
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: 0 } }}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: '#FFF3E0', borderTop: '2px solid #E65100' }}>
-          <Button onClick={() => setDeferDialog({ open: false, reason: '' })} sx={{ fontWeight: '1000', color: '#757575' }}>Cancel</Button>
-          <Button variant="contained" disabled={!deferDialog.reason.trim() || submittingAction} onClick={handleActionDeferConfirm}
-            sx={{ bgcolor: '#E65100', fontWeight: '1000', borderRadius: 0 }}>
+        <DialogActions sx={{ p: 2, bgcolor: '#FFF3E0', borderTop: '2px solid #E65100', flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1, sm: 0 }, alignItems: 'stretch' }}>
+          <Button fullWidth onClick={() => setDeferDialog({ open: false, reason: '' })} sx={{ fontWeight: '1000', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
+          <Button fullWidth variant="contained" disabled={!deferDialog.reason.trim() || submittingAction} onClick={handleActionDeferConfirm}
+            sx={{ bgcolor: '#E65100', fontWeight: '1000', borderRadius: 0, width: { xs: '100%', sm: 'auto' } }}>
             Confirm Defer
           </Button>
         </DialogActions>

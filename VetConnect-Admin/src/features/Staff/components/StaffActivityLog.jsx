@@ -146,12 +146,23 @@ export default function StaffActivityLog() {
         </Box>
 
         {/* Filter Row */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1.5, 
+          flexWrap: { xs: 'nowrap', lg: 'wrap' },
+          overflowX: { xs: 'auto', lg: 'visible' },
+          width: { xs: '100%', lg: 'auto' },
+          pb: { xs: 0.5, lg: 0 },
+          '&::-webkit-scrollbar': { height: '6px' },
+          '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(93, 64, 55, 0.2)', borderRadius: '3px' }
+        }}>
           <TextField
             select size="small"
             value={filterAction} onChange={(e) => setFilterAction(e.target.value)}
             sx={{ 
               minWidth: 160, 
+              flexShrink: 0,
               '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 'bold', bgcolor: 'white' }
             }}
             SelectProps={{
@@ -196,12 +207,13 @@ export default function StaffActivityLog() {
             value={filterStaff} onChange={(e) => setFilterStaff(e.target.value)}
             sx={{ 
               minWidth: 200, 
+              flexShrink: 0,
               '& .MuiOutlinedInput-root': { borderRadius: 0, fontSize: '0.75rem', fontWeight: 'bold', bgcolor: 'white' }
             }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
           />
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
             <TextField
               type="date" size="small"
               value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
@@ -218,8 +230,15 @@ export default function StaffActivityLog() {
       </Box>
 
       {/* TABLE AREA */}
-      <TableContainer sx={{ flexGrow: 1, bgcolor: COLORS.cream }}>
-        <Table stickyHeader size="small">
+      <TableContainer sx={{ 
+        flexGrow: 1, 
+        bgcolor: COLORS.cream,
+        '&::-webkit-scrollbar': { width: '8px', height: '8px' },
+        '&::-webkit-scrollbar-track': { background: COLORS.cream },
+        '&::-webkit-scrollbar-thumb': { background: COLORS.accent, borderRadius: 0 },
+        '&::-webkit-scrollbar-thumb:hover': { background: COLORS.brand }
+      }}>
+        <Table stickyHeader size="small" sx={{ minWidth: 900 }}>
           <TableHead>
             <TableRow>
               <TableCell sx={headerSx}>Timestamp</TableCell>

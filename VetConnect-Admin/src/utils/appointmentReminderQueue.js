@@ -148,6 +148,7 @@ export async function writeAppointmentQueueDoc(appointment) {
       ? appointment.scheduledDate
       : Timestamp.fromDate(schDate),
     scheduledTime,
+    assignedVet:    appointment.assignedVet || 'Unassigned',
     remindersSentHeadsUp:  existing.headsUp,
     remindersSentTomorrow: existing.tomorrow,
     remindersSentToday:    existing.today,
@@ -210,6 +211,7 @@ export async function updateAppointmentQueueDate(appointmentId, newScheduledDate
       ? newScheduledDate
       : Timestamp.fromDate(schDate),
     scheduledTime,
+    assignedVet:   appointment.assignedVet || 'Unassigned',
     // Clearing all 3 reminder stamps ensures every stage can fire for the new date.
     remindersSentHeadsUp:  null,
     remindersSentTomorrow: null,
@@ -306,15 +308,29 @@ export async function sendAppointmentRemindersFromQueue(clinicSettings = {}, sta
     }
 
     const petName = entry.petName || 'your pet';
+    const schDate = toDate(entry.scheduledDate);
+    const timeStr = entry.scheduledTime || formatTime(schDate);
+    const dateStr = schDate.toLocaleDateString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    const rawVet = entry.assignedVet || 'Unassigned';
+    const vetNameVal = rawVet && rawVet !== 'Unassigned' ? rawVet : 'our veterinary team';
 
     for (const { stage, templateKey, days } of toSend) {
       const template = templateCache[templateKey] || DEFAULT_TEMPLATES[templateKey];
-      const title = template.title
-        .replace(/\{petName\}/g, petName)
-        .replace(/\{days\}/g,    days);
-      const body  = template.body
-        .replace(/\{petName\}/g, petName)
-        .replace(/\{days\}/g,    days);
+
+      const interpolate = (str) =>
+        str
+          .replace(/\{petName\}/g,  petName)
+          .replace(/\{days\}/g,     days)
+          .replace(/\{time\}/g,     timeStr)
+          .replace(/\{date\}/g,     dateStr)
+          .replace(/\{vetName\}/g,  vetNameVal);
+
+      const title = interpolate(template.title);
+      const body  = interpolate(template.body);
 
       try {
         const pushRes = await fetch(endpoint, {

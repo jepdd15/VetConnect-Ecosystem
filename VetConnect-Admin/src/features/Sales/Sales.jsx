@@ -619,7 +619,7 @@ export default function Sales() {
       )
     },
     { 
-      field: 'items', headerName: 'Items Purchased', flex: 1, minWidth: 120, sortable: false, disableColumnMenu: true,
+      field: 'items', headerName: 'Items Purchased', flex: 1, minWidth: 180, sortable: false, disableColumnMenu: true,
       renderCell: (p) => {
         const items = p.value || [];
         const fullText = items.map(i => `${i.qty}x ${i.name}`).join(', ') || 'N/A';
@@ -739,7 +739,9 @@ export default function Sales() {
       {/* 1. FULL-BLEED COMMAND STRIP header */}
       <Box sx={{ flexShrink: 0, mb: 0 }}>
         <Paper elevation={0} sx={{
-          p: 2, px: 4, 
+          p: 2, 
+          pl: { xs: 8, md: 4 }, 
+          pr: 4,
           display: 'flex', 
           flexWrap: 'wrap', 
           gap: 2, 
@@ -790,7 +792,18 @@ export default function Sales() {
               </Box>
             </Box>
 
-            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexGrow: 1, flexWrap: 'wrap' }}>
+            <Box sx={{ 
+              display: 'flex', 
+              gap: 1.5, 
+              alignItems: 'center', 
+              flexGrow: 1, 
+              flexWrap: { xs: 'nowrap', lg: 'wrap' },
+              overflowX: { xs: 'auto', lg: 'visible' },
+              width: { xs: '100%', lg: 'auto' },
+              pb: { xs: 0.5, lg: 0 },
+              '&::-webkit-scrollbar': { height: '6px' },
+              '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(93, 64, 55, 0.2)', borderRadius: '3px' }
+            }}>
               <TextField
                 variant="outlined"
                 size="small"
@@ -817,6 +830,7 @@ export default function Sales() {
                   flex: { xs: '1 1 100%', sm: '1 1 200px' }, 
                   maxWidth: { xs: '100%', lg: 200 }, 
                   minWidth: 160,
+                  flexShrink: 0,
                   '& .MuiOutlinedInput-root': {
                     fontWeight: 900,
                     fontSize: '0.85rem',
@@ -831,7 +845,7 @@ export default function Sales() {
                 }}
               />
 
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexShrink: 0 }}>
                 <TextField
                   type="date"
                   size="small"
@@ -885,7 +899,7 @@ export default function Sales() {
                 )}
               </Box>
 
-              <FormControl size="small" sx={{ minWidth: 120 }}>
+              <FormControl size="small" sx={{ minWidth: 120, flexShrink: 0 }}>
                 <Select 
                   value={filterStatus} 
                   onChange={(e) => setFilterStatus(e.target.value)} 
@@ -905,7 +919,7 @@ export default function Sales() {
                 </Select>
               </FormControl>
 
-              <FormControl size="small" sx={{ minWidth: 120 }}>
+              <FormControl size="small" sx={{ minWidth: 120, flexShrink: 0 }}>
                 <Select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value)}
@@ -932,15 +946,20 @@ export default function Sales() {
             display: 'flex', 
             gap: 1.5, 
             alignItems: 'center', 
-            justifyContent: 'flex-end',
-            flexWrap: 'wrap',
-            flexGrow: 1 
+            justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+            flexWrap: { xs: 'nowrap', lg: 'wrap' },
+            overflowX: { xs: 'auto', lg: 'visible' },
+            width: { xs: '100%', lg: 'auto' },
+            pb: { xs: 0.5, lg: 0 },
+            '&::-webkit-scrollbar': { height: '6px' },
+            '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(93, 64, 55, 0.2)', borderRadius: '3px' }
           }}>
             <Button
               variant="contained"
               startIcon={<ShoppingCartIcon />}
               onClick={() => setOpenRetailPOS(true)}
               sx={{
+                flexShrink: 0,
                 bgcolor: COLORS.sky, fontWeight: 900, borderRadius: 0, px: 3,
                 border: `2px solid ${COLORS.skyHover}`,
                 boxShadow: `4px 4px 0px ${COLORS.brand}1A`,
@@ -959,6 +978,7 @@ export default function Sales() {
                 onClick={() => setOpenCloseDay(true)}
                 disabled={loading || sales.length === 0}
                 sx={{
+                  flexShrink: 0,
                   bgcolor: COLORS.danger, fontWeight: 900, borderRadius: 0, px: 2,
                   border: `2px solid ${COLORS.dangerHover}`,
                   boxShadow: `4px 4px 0px ${COLORS.brand}1A`,
@@ -976,6 +996,7 @@ export default function Sales() {
                 size="small"
                 onClick={() => setOpenZReport(true)}
                 sx={{
+                  flexShrink: 0,
                   fontWeight: 900, borderRadius: 0, px: 2, borderWidth: 2,
                   borderColor: COLORS.success, color: COLORS.success,
                   textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem',
@@ -992,6 +1013,7 @@ export default function Sales() {
                 size="small"
                 onClick={() => setOpenReopenDay(true)}
                 sx={{
+                  flexShrink: 0,
                   fontWeight: 900, borderRadius: 0, px: 2, borderWidth: 2,
                   borderColor: COLORS.warning, color: COLORS.warning,
                   textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.75rem',
@@ -1009,6 +1031,7 @@ export default function Sales() {
               onClick={() => exportSalesCSV(processedSales)}
               disabled={loading || processedSales.length === 0}
               sx={{ 
+                flexShrink: 0,
                 fontWeight: 900, borderRadius: 0, px: 2, borderWidth: 2,
                 borderColor: COLORS.brand, color: COLORS.brand,
                 textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.7rem',
@@ -1025,6 +1048,7 @@ export default function Sales() {
               onClick={() => printSalesLedger(processedSales, clinicSettings, filterSummary, () => setToast({ open: true, message: 'Pop-up blocked — allow pop-ups for this site.', severity: 'warning' }))}
               disabled={loading || processedSales.length === 0}
               sx={{ 
+                flexShrink: 0,
                 fontWeight: 900, borderRadius: 0, px: 2, borderWidth: 2,
                 borderColor: COLORS.accent, color: COLORS.accent,
                 textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.7rem',
@@ -1041,6 +1065,7 @@ export default function Sales() {
               onClick={handlePrintReport}
               disabled={loading}
               sx={{ 
+                flexShrink: 0,
                 fontWeight: 900, borderRadius: 0, px: 2, borderWidth: 2,
                 borderColor: COLORS.brand, color: COLORS.brand,
                 textTransform: 'uppercase', letterSpacing: 0.5, fontSize: '0.7rem',

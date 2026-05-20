@@ -6,6 +6,7 @@ import {
   Tabs, Tab, Menu, MenuItem, ListItemIcon, ListItemText, Divider, List, ListItem, Alert,
   Popover, Chip, FormControl, InputLabel, Select, Switch,
   ToggleButton, ToggleButtonGroup, Autocomplete, InputAdornment, Snackbar,
+  useTheme, useMediaQuery,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import { collection, query, onSnapshot, doc, updateDoc, Timestamp, where, getDocs, writeBatch, getDoc, arrayUnion, runTransaction, deleteField } from 'firebase/firestore';
@@ -81,6 +82,8 @@ const BREED_DATA = {
 };
 
 export default function Queue() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [rows, setRows] = useState([]);
   const [vets, setVets] = useState([]);
   const [inventoryList, setInventoryList] = useState([]);
@@ -1827,7 +1830,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         overflow: 'hidden' 
     }}>
       {/* WARNING BANNERS (FLEX-SHRINK: 0) */}
-      <Box sx={{ flexShrink: 0 }}>
+      <Box sx={{ flexShrink: 0, px: { xs: 2, md: 4 }, pl: { xs: 8, md: 4 }, pt: { xs: 2, md: 0 } }}>
 
       {isTomorrowView && hasGhostPatients && (
         <Alert
@@ -1859,7 +1862,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       </Box>
 
       {/* HEADER CONTROLS (FLEX-SHRINK: 0) */}
-      <Box sx={{ flexShrink: 0, mb: 3 }}>
+      <Box sx={{ flexShrink: 0, mb: 3, px: { xs: 2, md: 4 }, pl: { xs: 8, md: 4 } }}>
         <Paper sx={{ 
           ...headerFlatStyle, 
           p: 2, 
@@ -2065,13 +2068,14 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
       {/* TABS (FLEX-SHRINK: 0) - ONLY SHOW FOR TODAY */}
       {!isTomorrowView && (
-        <Box sx={{ flexShrink: 0, mb: 2 }}>
+        <Box sx={{ flexShrink: 0, mb: 2, px: { xs: 2, md: 4 }, pl: { xs: 8, md: 4 } }}>
           <Paper sx={{ ...clinicalFlatStyle, p: 0.5 }}>
             <Tabs 
               value={tabValue} 
               onChange={(e, v) => setTabValue(v)} 
-              variant="fullWidth" 
+              variant={isMobile ? "scrollable" : "fullWidth"} 
               scrollButtons="auto" 
+              allowScrollButtonsMobile
               TabIndicatorProps={{ style: { display: 'none' } }} 
               sx={{ 
                 minHeight: 48, 
@@ -2097,15 +2101,14 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
 
       {/* RECENTLY RESOLVED PANEL (T3.10b) */}
       {showResolved && recentlyResolved.length > 0 && (
-        <Paper sx={{
-          ...clinicalFlatStyle,
-          p: 2,
-          mb: 2,
-          flexShrink: 0,
-          maxHeight: 280,
-          overflow: 'auto',
-          border: '2px solid #D7CCC8',
-        }}>
+        <Box sx={{ flexShrink: 0, mb: 2, px: { xs: 2, md: 4 }, pl: { xs: 8, md: 4 } }}>
+          <Paper sx={{
+            ...clinicalFlatStyle,
+            p: 2,
+            maxHeight: 280,
+            overflow: 'auto',
+            border: '2px solid #D7CCC8',
+          }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
             <Typography variant="overline" sx={{ fontWeight: 900, color: '#5D4037', letterSpacing: 1.5, fontSize: '0.7rem' }}>
               RECENTLY RESOLVED ({recentlyResolved.length})
@@ -2196,6 +2199,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
             )}
           </Stack>
         </Paper>
+        </Box>
       )}
 
       {/* DATA GRID (FLEX: 1 - THE FILLER) */}
@@ -2367,8 +2371,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
               </Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 2, pt: 1, borderTop: '1px solid #FFCDD2' }}>
-          <Button onClick={() => setOpenReject(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+        <DialogActions sx={{ p: 2, pt: 1, borderTop: '1px solid #FFCDD2', flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1.5, sm: 0.5 } }}>
+          <Button onClick={() => setOpenReject(false)} sx={{ fontWeight: 'bold', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
           <Button
             onClick={confirmReject}
             variant="contained"
@@ -2377,6 +2381,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 bgcolor: '#D32F2F', 
                 fontWeight: '1000', 
                 px: 3,
+                width: { xs: '100%', sm: 'auto' },
                 '&.Mui-disabled': { bgcolor: '#e0e0e0' },
                 '&:hover': { bgcolor: '#B71C1C' }
             }}
@@ -3326,9 +3331,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: '#FFF' }}>
-          <Button onClick={() => setOpenEdit(false)} sx={{ fontWeight: '1000', color: '#757575' }}>DISCARD CHANGES</Button>
-          <Button onClick={saveEdit} variant="contained" disabled={submitting} sx={{ bgcolor: '#5D4037', fontWeight: '1000', px: 4 }}>SAVE CLINICAL IDENTITY</Button>
+        <DialogActions sx={{ p: 2, bgcolor: '#FFF', flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1.5, sm: 0.5 } }}>
+          <Button onClick={() => setOpenEdit(false)} sx={{ fontWeight: '1000', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>DISCARD CHANGES</Button>
+          <Button onClick={saveEdit} variant="contained" disabled={submitting} sx={{ bgcolor: '#5D4037', fontWeight: '1000', px: 4, width: { xs: '100%', sm: 'auto' } }}>SAVE CLINICAL IDENTITY</Button>
         </DialogActions>
       </Dialog>
 
@@ -3378,13 +3383,13 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
               </Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 2, pt: 0 }}>
-          <Button onClick={() => setOpenReschedule(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+        <DialogActions sx={{ p: 2, pt: 0, flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1.5, sm: 0.5 } }}>
+          <Button onClick={() => setOpenReschedule(false)} sx={{ fontWeight: 'bold', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
           <Button
             onClick={saveReschedule}
             variant="contained"
             disabled={!newDate || !auditReason.trim() || submitting}
-            sx={{ bgcolor: '#1976D2', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' } }}
+            sx={{ bgcolor: '#1976D2', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' }, width: { xs: '100%', sm: 'auto' } }}
           >
             Update Schedule
           </Button>
@@ -3464,8 +3469,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
               </Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 2, pt: 1, borderTop: '1px solid #FFE0B2' }}>
-          <Button onClick={() => setOpenRevert(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+        <DialogActions sx={{ p: 2, pt: 1, borderTop: '1px solid #FFE0B2', flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1.5, sm: 0.5 } }}>
+          <Button onClick={() => setOpenRevert(false)} sx={{ fontWeight: 'bold', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
           <Button
             onClick={confirmRevert}
             variant="contained"
@@ -3474,6 +3479,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                 bgcolor: '#E65100',
                 fontWeight: '1000',
                 px: 3,
+                width: { xs: '100%', sm: 'auto' },
                 '&.Mui-disabled': { bgcolor: '#e0e0e0' },
                 '&:hover': { bgcolor: '#BF360C' }
             }}
@@ -3514,13 +3520,13 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
               </Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 2, pt: 0 }}>
-          <Button onClick={() => setOpenDefer(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+        <DialogActions sx={{ p: 2, pt: 0, flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1.5, sm: 0.5 } }}>
+          <Button onClick={() => setOpenDefer(false)} sx={{ fontWeight: 'bold', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
           <Button
             onClick={saveDefer}
             variant="contained"
             disabled={!auditReason.trim() || submitting}
-            sx={{ bgcolor: '#E65100', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' } }}
+            sx={{ bgcolor: '#E65100', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' }, width: { xs: '100%', sm: 'auto' } }}
           >
             Confirm Deferral
           </Button>
@@ -3559,13 +3565,13 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
               </Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 2, pt: 0 }}>
-          <Button onClick={() => setOpenNoShow(false)} sx={{ fontWeight: 'bold', color: '#757575' }}>Cancel</Button>
+        <DialogActions sx={{ p: 2, pt: 0, flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1.5, sm: 0.5 } }}>
+          <Button onClick={() => setOpenNoShow(false)} sx={{ fontWeight: 'bold', color: '#757575', width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
           <Button
             onClick={saveNoShow}
             variant="contained"
             disabled={!auditReason.trim() || submitting}
-            sx={{ bgcolor: '#D32F2F', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' } }}
+            sx={{ bgcolor: '#D32F2F', fontWeight: 'bold', '&.Mui-disabled': { bgcolor: '#e0e0e0' }, width: { xs: '100%', sm: 'auto' } }}
           >
             Confirm No-Show
           </Button>
@@ -3884,9 +3890,9 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       <Dialog open={!!confirmDialog} onClose={() => setConfirmDialog(null)} maxWidth="xs">
         <DialogTitle>Confirm</DialogTitle>
         <DialogContent><Typography>{confirmDialog?.message}</Typography></DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmDialog(null)}>Cancel</Button>
-          <Button variant="contained" onClick={confirmDialog?.onConfirm} sx={{ borderRadius: 0 }}>Confirm</Button>
+        <DialogActions sx={{ flexDirection: { xs: 'column-reverse', sm: 'row' }, gap: { xs: 1.5, sm: 0.5 }, p: 2 }}>
+          <Button onClick={() => setConfirmDialog(null)} sx={{ width: { xs: '100%', sm: 'auto' } }}>Cancel</Button>
+          <Button variant="contained" onClick={confirmDialog?.onConfirm} sx={{ borderRadius: 0, width: { xs: '100%', sm: 'auto' } }}>Confirm</Button>
         </DialogActions>
       </Dialog>
 

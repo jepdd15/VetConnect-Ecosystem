@@ -19,6 +19,8 @@ import {
   TextField,
   FormControlLabel,
   Switch,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
@@ -534,12 +536,13 @@ function WeekView({
   return (
     <Box
       sx={{
-        overflowY: 'auto',
+        overflow: 'auto',
         maxHeight: 'calc(100vh - 200px)',
         border: `1px solid ${COLORS.border}`,
       }}
     >
-      {/* Column headers */}
+      <Box sx={{ minWidth: { xs: 800, md: '100%' } }}>
+        {/* Column headers */}
       <Box
         sx={{
           display: 'grid',
@@ -769,6 +772,7 @@ function WeekView({
           })}
         </Box>
       ))}
+      </Box>
     </Box>
   );
 }
@@ -833,8 +837,9 @@ function MonthView({ anchorDate, dayMap, getSlotCapacity, isClosedDate, isWorkin
   };
 
   return (
-    <Box>
-      {/* Day-of-week column headers */}
+    <Box sx={{ overflowX: 'auto', border: `1px solid ${COLORS.border}`, borderRadius: 0 }}>
+      <Box sx={{ minWidth: { xs: 800, md: '100%' } }}>
+        {/* Day-of-week column headers */}
       <Box
         sx={{
           display: 'grid',
@@ -1050,6 +1055,7 @@ function MonthView({ anchorDate, dayMap, getSlotCapacity, isClosedDate, isWorkin
           />
         ))}
       </Box>
+      </Box>
     </Box>
   );
 }
@@ -1114,6 +1120,8 @@ const btnActionSx = {
 };
 
 export default function Calendar() {
+  const theme          = useTheme();
+  const isMobile       = useMediaQuery(theme.breakpoints.down('md'));
   const settings       = useClinicSettings();
   const { user, profile } = useUser();
   const { changeStatus, revertStatus } = useQueueActions();
@@ -2004,7 +2012,8 @@ export default function Calendar() {
       {/* ── HEADER ──────────────────────────────── */}
       <Box
         sx={{
-          px: 3,
+          px: { xs: 2, md: 3 },
+          pl: { xs: 8, md: 3 },
           pt: 2.5,
           pb: 1.5,
           bgcolor: COLORS.cardBg,
@@ -2296,84 +2305,86 @@ export default function Calendar() {
       <Box sx={{ flexGrow: 1, overflow: 'hidden', display: 'flex' }}>
 
         {/* Calendar grid area — shrinks when AI panel is open */}
-        <Box sx={{ flex: 1, overflow: 'hidden', p: 2, minWidth: 0 }}>
-          {/* Error state */}
-          {error && !loading && (
-            <Alert
-              severity="error"
-              sx={{ borderRadius: 0, mb: 2, border: `1px solid ${COLORS.danger}` }}
-              action={
-                <Button size="small" onClick={refresh} sx={{ borderRadius: 0, fontWeight: 700 }}>
-                  RETRY
-                </Button>
-              }
-            >
-              Failed to load appointments: {error}
-            </Alert>
-          )}
+        {(!isMobile || !calAIOpen) && (
+          <Box sx={{ flex: 1, overflow: 'hidden', p: 2, minWidth: 0 }}>
+            {/* Error state */}
+            {error && !loading && (
+              <Alert
+                severity="error"
+                sx={{ borderRadius: 0, mb: 2, border: `1px solid ${COLORS.danger}` }}
+                action={
+                  <Button size="small" onClick={refresh} sx={{ borderRadius: 0, fontWeight: 700 }}>
+                    RETRY
+                  </Button>
+                }
+              >
+                Failed to load appointments: {error}
+              </Alert>
+            )}
 
-          {/* Loading skeleton */}
-          {loading && <CalendarSkeleton view={view} />}
+            {/* Loading skeleton */}
+            {loading && <CalendarSkeleton view={view} />}
 
-          {/* Empty state */}
-          {!loading && !error && appointments.length === 0 && (
-            <Box sx={{ textAlign: 'center', py: 10 }}>
-              <CalendarMonthIcon sx={{ fontSize: 64, color: COLORS.textMuted, mb: 2 }} />
-              <Typography sx={{ ...TYPE.heading, color: COLORS.textMuted }}>
-                No appointments scheduled
-              </Typography>
-              <Typography sx={{ ...TYPE.body, color: COLORS.textMuted, mt: 1 }}>
-                {view === 'week'
-                  ? `No appointments found for ${dateLabel}.`
-                  : `No appointments in ${dateLabel}.`}
-              </Typography>
-            </Box>
-          )}
+            {/* Empty state */}
+            {!loading && !error && appointments.length === 0 && (
+              <Box sx={{ textAlign: 'center', py: 10 }}>
+                <CalendarMonthIcon sx={{ fontSize: 64, color: COLORS.textMuted, mb: 2 }} />
+                <Typography sx={{ ...TYPE.heading, color: COLORS.textMuted }}>
+                  No appointments scheduled
+                </Typography>
+                <Typography sx={{ ...TYPE.body, color: COLORS.textMuted, mt: 1 }}>
+                  {view === 'week'
+                    ? `No appointments found for ${dateLabel}.`
+                    : `No appointments in ${dateLabel}.`}
+                </Typography>
+              </Box>
+            )}
 
-          {/* Calendar grid — render even when appointments.length === 0 (shows empty grid structure) */}
-          {!loading && !error && (
-            <>
-              {view === 'week' && (
-                <WeekView
-                  weekStart={weekStart}
-                  dayMap={dayMap}
-                  getSlotCapacity={getSlotCapacity}
-                  isClosedDate={isClosedDate}
-                  isWorkingDay={isWorkingDay}
-                  isLunchHour={isLunchHour}
-                  departments={departments}
-                  settings={settings}
-                  showLanes={showLanes}
-                  onHoverEnter={handleApptHoverEnter}
-                  onHoverLeave={handleApptHoverLeave}
-                  onAppointmentClick={handleApptClick}
-                  onEmptySlotClick={handleEmptySlotClick}
-                  onApptContextMenu={handleApptContextMenu}
-                  onEmptySlotContextMenu={handleEmptySlotContextMenu}
-                />
-              )}
+            {/* Calendar grid — render even when appointments.length === 0 (shows empty grid structure) */}
+            {!loading && !error && (
+              <>
+                {view === 'week' && (
+                  <WeekView
+                    weekStart={weekStart}
+                    dayMap={dayMap}
+                    getSlotCapacity={getSlotCapacity}
+                    isClosedDate={isClosedDate}
+                    isWorkingDay={isWorkingDay}
+                    isLunchHour={isLunchHour}
+                    departments={departments}
+                    settings={settings}
+                    showLanes={showLanes}
+                    onHoverEnter={handleApptHoverEnter}
+                    onHoverLeave={handleApptHoverLeave}
+                    onAppointmentClick={handleApptClick}
+                    onEmptySlotClick={handleEmptySlotClick}
+                    onApptContextMenu={handleApptContextMenu}
+                    onEmptySlotContextMenu={handleEmptySlotContextMenu}
+                  />
+                )}
 
-              {view === 'month' && (
-                <MonthView
-                  anchorDate={anchorDate}
-                  dayMap={dayMap}
-                  getSlotCapacity={getSlotCapacity}
-                  isClosedDate={isClosedDate}
-                  isWorkingDay={isWorkingDay}
-                  settings={settings}
-                  setView={setView}
-                  setAnchorDate={setAnchorDate}
-                  onDayContextMenu={handleDayContextMenu}
-                />
-              )}
-            </>
-          )}
-        </Box>
+                {view === 'month' && (
+                  <MonthView
+                    anchorDate={anchorDate}
+                    dayMap={dayMap}
+                    getSlotCapacity={getSlotCapacity}
+                    isClosedDate={isClosedDate}
+                    isWorkingDay={isWorkingDay}
+                    settings={settings}
+                    setView={setView}
+                    setAnchorDate={setAnchorDate}
+                    onDayContextMenu={handleDayContextMenu}
+                  />
+                )}
+              </>
+            )}
+          </Box>
+        )}
 
         {/* AI Panel — collapsible right column (shrinks calendar, not overlay) */}
         {calAIOpen && (
           <Box sx={{
-            width: 440,
+            width: { xs: '100%', md: 440 },
             flexShrink: 0,
             display: 'flex',
             flexDirection: 'column',

@@ -1866,6 +1866,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
             status: 'service-completed',
             petName: patient.petName,
             serviceName: toggledServiceName,
+            staffName,
             nextService,
             appointmentId: patient.id,
             sentBy: staffName,

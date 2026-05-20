@@ -76,7 +76,7 @@ export default function ServiceLogModal({ open, onClose, item }) {
                     </Box>
 
                     <Box sx={{ flexGrow: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 0.5, mb: 0.5 }}>
                         <Typography variant="body2" fontWeight="900" sx={{ color: cfg.color }}>
                           {log.action}
                         </Typography>

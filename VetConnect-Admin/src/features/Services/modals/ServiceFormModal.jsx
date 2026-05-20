@@ -3,7 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem,
   Chip, Button, Box, Typography, Paper, InputAdornment, FormControlLabel,
   Switch, FormControl, InputLabel, Select, Grid, IconButton, Divider,
-  ListSubheader, Autocomplete,
+  ListSubheader, Autocomplete, useTheme, useMediaQuery,
 } from '@mui/material';
 
 import { useUser } from '../../../context/UserContext';
@@ -21,6 +21,8 @@ import { COLORS, FONT } from '../../../theme/designTokens';
 export default function ServiceFormModal({ open, onClose, item, inventory, onSave, showToast, departments }) {
 
   const { isAdmin } = useUser();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   // Build initial linkedProducts — migrate old singular field
   const initLinkedProducts = item?.linkedProducts
@@ -199,7 +201,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
       </DialogTitle>
 
       <DialogContent sx={{ p: 0, bgcolor: COLORS.formBg, overflowY: 'auto' }}>
-        <Box sx={{ p: 3 }}>
+        <Box sx={{ p: { xs: 2, md: 3 } }}>
 
           {/* ── Section 1: Identity & Routing ── */}
           <Typography variant="overline" sx={{ color: COLORS.accent, fontWeight: 900, mb: 1, display: 'block', letterSpacing: 1 }}>
@@ -303,17 +305,64 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
 
                 {formData.hasTieredPricing && (
                   <Box>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 1, mb: 1 }}>
+                    <Box sx={{ display: { xs: 'none', sm: 'grid' }, gridTemplateColumns: '1fr 1fr 1fr auto', gap: 1, mb: 1 }}>
                       {['Min (kg)', 'Max (kg)', 'Price (₱)', ''].map((h, i) => (
                         <Typography key={i} variant="caption" sx={{ fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</Typography>
                       ))}
                     </Box>
                     {formData.pricingTiers.map((tier, idx) => (
-                      <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 1, mb: 1, alignItems: 'center' }}>
-                        <TextField size="small" type="number" value={tier.minWeight} onChange={(e) => updateTier(idx, 'minWeight', e.target.value)} sx={sxField} inputProps={{ min: 0 }} />
-                        <TextField size="small" type="number" value={tier.maxWeight} onChange={(e) => updateTier(idx, 'maxWeight', e.target.value)} sx={sxField} inputProps={{ min: 0 }} placeholder="0 = no limit" />
-                        <TextField size="small" type="number" value={tier.price} onChange={(e) => updateTier(idx, 'price', e.target.value)} sx={sxField} InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }} inputProps={{ min: 0 }} />
-                        <IconButton size="small" onClick={() => removeTier(idx)} disabled={formData.pricingTiers.length <= 1} sx={{ color: COLORS.danger }}>
+                      <Box
+                        key={idx}
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr auto' },
+                          gap: 1.5,
+                          mb: { xs: 2.5, sm: 1 },
+                          alignItems: 'center',
+                          p: { xs: 1.5, sm: 0 },
+                          bgcolor: { xs: 'rgba(0,0,0,0.02)', sm: 'transparent' },
+                          border: { xs: `1px solid ${COLORS.border}`, sm: 'none' },
+                        }}
+                      >
+                        <TextField
+                          label={isMobile ? "Min Weight (kg)" : ""}
+                          size="small"
+                          type="number"
+                          value={tier.minWeight}
+                          onChange={(e) => updateTier(idx, 'minWeight', e.target.value)}
+                          sx={sxField}
+                          inputProps={{ min: 0 }}
+                        />
+                        <TextField
+                          label={isMobile ? "Max Weight (kg) (0 = no limit)" : ""}
+                          size="small"
+                          type="number"
+                          value={tier.maxWeight}
+                          onChange={(e) => updateTier(idx, 'maxWeight', e.target.value)}
+                          sx={sxField}
+                          inputProps={{ min: 0 }}
+                          placeholder={isMobile ? "" : "0 = no limit"}
+                        />
+                        <TextField
+                          label={isMobile ? "Price (₱)" : ""}
+                          size="small"
+                          type="number"
+                          value={tier.price}
+                          onChange={(e) => updateTier(idx, 'price', e.target.value)}
+                          sx={sxField}
+                          InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
+                          inputProps={{ min: 0 }}
+                        />
+                        <IconButton
+                          size="small"
+                          onClick={() => removeTier(idx)}
+                          disabled={formData.pricingTiers.length <= 1}
+                          sx={{
+                            color: COLORS.danger,
+                            alignSelf: { xs: 'flex-end', sm: 'center' },
+                            justifySelf: { xs: 'flex-end', sm: 'auto' }
+                          }}
+                        >
                           <DeleteOutlineIcon fontSize="small" />
                         </IconButton>
                       </Box>
@@ -334,10 +383,10 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                 <Typography variant="caption" sx={{ fontWeight: 900, color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 1, display: 'block', mb: 1 }}>
                   Auto-Deduct Inventory Bundle
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
+                <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5, alignItems: { xs: 'stretch', sm: 'center' }, mb: 1 }}>
                   <Autocomplete
                     size="small"
-                    sx={{ minWidth: 280 }}
+                    sx={{ flexGrow: 1, minWidth: { xs: '100%', sm: 280 } }}
                     options={[...availableToLink].sort((a, b) => (a.category || 'Other').localeCompare(b.category || 'Other') || (a.itemName || '').localeCompare(b.itemName || ''))}
                     getOptionLabel={(option) => option.itemName || ''}
                     groupBy={(option) => (option.category || 'Other').toUpperCase()}
@@ -456,7 +505,19 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ p: 2.5, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}`, borderRadius: 0 }}>
+      <DialogActions sx={{
+        p: 2.5,
+        bgcolor: COLORS.cream,
+        borderTop: `2px solid ${COLORS.accent}`,
+        borderRadius: 0,
+        flexDirection: { xs: 'column-reverse', sm: 'row' },
+        gap: { xs: 1.5, sm: 0 },
+        alignItems: 'stretch',
+        '& .MuiButton-root': {
+          width: { xs: '100%', sm: 'auto' },
+          ml: { xs: 0, sm: 2 },
+        }
+      }}>
         <Button onClick={onClose} sx={{ fontWeight: 900, color: COLORS.accent, px: 3, border: `2px solid ${COLORS.accent}`, borderRadius: 0, '&:hover': { bgcolor: 'rgba(0,0,0,0.05)' } }}>
           CANCEL
         </Button>

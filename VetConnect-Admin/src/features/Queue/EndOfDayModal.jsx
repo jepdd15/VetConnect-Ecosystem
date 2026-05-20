@@ -62,7 +62,7 @@ const SERVICES_STATUS_ORDER = { completed: 0, 'in-progress': 1, pending: 2 };
 // --- 📡 MEMOIZED AUDIT CARD: THE PERFORMANCE CURE ---
 const AuditPatientCard = React.memo(({
     patient, resolution, targetDate, targetTime, auditReason, realTimeStatus, tabMode, ancestorData, loadingHistory, historyMessage, departments, settings,
-    onResolutionChange, onAuditReasonChange, onFetchHistory, onClearHistory, onGenderOpen, CARD_HEIGHT,
+    onResolutionChange, onAuditReasonChange, onFetchHistory, onClearHistory, onGenderOpen,
     depositAmount, depositMethod, onDepositChange, // T2.102: deposit collection for active-silo carry-overs
     isClosedDay, getDatePickerStyle, // hoisted to EndOfDayModal scope — batch strip needs them too
 }) => {
@@ -297,8 +297,13 @@ const AuditPatientCard = React.memo(({
         <Paper elevation={0} sx={{
             borderRadius: 1.5,
             border: isResolvedRemotely ? '2px solid #2E7D32' : `2px solid ${clinicalBorder}`,
-            display: 'flex', bgcolor: isResolvedRemotely ? 'rgba(46, 125, 50, 0.05)' : forensicBg,
-            overflow: 'hidden', position: 'relative', minHeight: CARD_HEIGHT,
+            display: 'flex',
+            flexWrap: 'nowrap',
+            bgcolor: isResolvedRemotely ? 'rgba(46, 125, 50, 0.05)' : forensicBg,
+            overflow: 'hidden', position: 'relative',
+            width: '100%',
+            minWidth: '1200px',
+            minHeight: CARD_HEIGHT,
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
             boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
             opacity: isResolvedRemotely ? 0.8 : 1,
@@ -320,8 +325,13 @@ const AuditPatientCard = React.memo(({
                     </Box>
                 </Box>
             )}
-            {/* 1. PATIENT IDENTITY (280px) */}
-            <Box sx={{ width: 280, borderRight: `1px solid ${clinicalBorder}`, p: 2, bgcolor: '#FFF', display: 'flex', flexDirection: 'column' }}>
+            {/* 1. PATIENT IDENTITY */}
+            <Box sx={{
+                width: 280,
+                flexShrink: 0,
+                borderRight: `2px solid ${clinicalBorder}`,
+                p: 2, bgcolor: '#FFF', display: 'flex', flexDirection: 'column'
+            }}>
                 <Typography variant="h5" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: -1, lineHeight: 1, mb: 1.5 }}>
                     {patient.petName?.toUpperCase()}
                 </Typography>
@@ -444,8 +454,13 @@ const AuditPatientCard = React.memo(({
                 </Box>
             </Box>
 
-            {/* 2. SERVICE WATERFALL LEDGER (SYMMETRIC 300px) */}
-            <Box sx={{ width: 300, borderRight: `1px solid ${clinicalBorder}`, bgcolor: '#FFF', display: 'flex', flexDirection: 'column' }}>
+            {/* 2. SERVICE WATERFALL LEDGER */}
+            <Box sx={{
+                width: 300,
+                flexShrink: 0,
+                borderRight: `2px solid ${clinicalBorder}`,
+                bgcolor: '#FFF', display: 'flex', flexDirection: 'column'
+            }}>
                 <Box sx={{ p: 1.2, borderBottom: `1px solid ${clinicalBorder}`, bgcolor: '#FFF' }}>
                     <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1, display: 'block', fontSize: '0.6rem' }}>
                         🏥 SERVICES ({patient.services?.length || 0})
@@ -564,8 +579,13 @@ const AuditPatientCard = React.memo(({
                 </Box>
             </Box>
 
-            {/* 3. FORENSIC TEMPORAL AUDIT (SYMMETRIC 300px) */}
-            <Box sx={{ width: 300, borderRight: `1px solid ${clinicalBorder}`, bgcolor: '#FFF', p: 1.5, display: 'flex', flexDirection: 'column' }}>
+            {/* 3. FORENSIC TEMPORAL AUDIT */}
+            <Box sx={{
+                width: 300,
+                flexShrink: 0,
+                borderRight: `2px solid ${clinicalBorder}`,
+                bgcolor: '#FFF', p: 1.5, display: 'flex', flexDirection: 'column'
+            }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
                     <Typography variant="overline" sx={{ fontWeight: '1000', color: '#5D4037', letterSpacing: 1.2, fontSize: '0.6rem' }}>
                         ⌛ DAY {activeCaseDay + 1} OF {uniqueDates.length} • {uniqueDates[activeCaseDay]}
@@ -753,8 +773,12 @@ const AuditPatientCard = React.memo(({
                 })()}
             </Box>
 
-            {/* 4. RECOMMENDATION & VERDICT (FLEX - EXPANDS ON TRIAGE) */}
-            <Box sx={{ flex: 1, p: 2, display: 'flex', flexDirection: 'column', pb: resolution ? 4 : 2 }}>
+            {/* 4. RECOMMENDATION & VERDICT */}
+            <Box sx={{
+                flex: 1,
+                minWidth: 320,
+                p: 2, display: 'flex', flexDirection: 'column', pb: resolution ? 4 : 2
+            }}>
                 <Box sx={{ p: 1.5, bgcolor: !resolution ? '#F5F5F5' : (isHighStakes ? '#FFF9C4' : (resolution === 'reschedule' || resolution === 'carryover' ? '#FFF9C4' : resolution === 'no-show' ? '#FFEBEE' : '#F5F5F5')), border: `2px solid ${clinicalBorder}`, borderRadius: 0, mb: 1.5, transition: 'all 0.2s ease-out' }}>
                     {(() => {
                         const scenarioMap = {
@@ -1284,18 +1308,20 @@ const EndOfDayModal = React.memo(({
 
     return (
         <Box sx={{
-            position: 'fixed', top: 0, left: sidebarWidth, right: 0, bottom: 0,
-            width: `calc(100% - ${sidebarWidth}px)`,
+            position: 'fixed', top: 0,
+            left: { xs: 0, md: `${sidebarWidth}px` },
+            right: 0, bottom: 0,
+            width: { xs: '100%', md: `calc(100% - ${sidebarWidth}px)` },
             zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center',
             bgcolor: 'rgba(255, 255, 255, 0.45)', backdropFilter: 'blur(30px)',
-            animation: 'fadeIn 0.2s ease-out', p: 4
+            animation: 'fadeIn 0.2s ease-out', p: { xs: 1.5, sm: 2, md: 4 }
         }}>
             <style>{`
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       `}</style>
 
             <Paper elevation={0} sx={{
-                width: '98%', maxWidth: '1280px', maxHeight: '94vh',
+                width: '98%', maxWidth: '1280px', maxHeight: { xs: '98vh', md: '94vh' },
                 display: 'flex', flexDirection: 'column',
                 borderRadius: 2, border: '2px solid #5D4037', overflow: 'hidden',
                 boxShadow: '0 32px 100px rgba(93, 64, 55, 0.45)',
@@ -1305,8 +1331,9 @@ const EndOfDayModal = React.memo(({
                 {isConfirming && (
                     <Box sx={{
                         position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-                        width: 'max-content', minWidth: '550px', bgcolor: '#3E2723', color: 'white', borderRadius: 4,
-                        p: 5, boxShadow: '0 32px 100px rgba(0,0,0,0.8)', zIndex: 100,
+                        width: { xs: '90%', sm: 'auto' }, minWidth: { xs: '280px', sm: '550px' }, maxWidth: '90%', 
+                        bgcolor: '#3E2723', color: 'white', borderRadius: 4,
+                        p: { xs: 3, sm: 5 }, boxShadow: '0 32px 100px rgba(0,0,0,0.8)', zIndex: 100,
                         border: '3px solid #FFD180',
                         animation: 'centerPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
                     }}>
@@ -1315,34 +1342,41 @@ const EndOfDayModal = React.memo(({
                             TRIAGE SIGN-OFF
                         </Typography>
 
-                        <Stack direction="row" spacing={3} justifyContent="center" sx={{ bgcolor: 'rgba(0,0,0,0.3)', p: 3, borderRadius: 2, mb: 3 }}>
-                            <Box sx={{ textAlign: 'center' }}>
-                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#81C784' }}>{census.defer}</Typography>
+                        <Stack 
+                            direction="row" 
+                            spacing={2} 
+                            justifyContent="center" 
+                            useFlexGap 
+                            flexWrap="wrap" 
+                            sx={{ bgcolor: 'rgba(0,0,0,0.3)', p: 3, borderRadius: 2, mb: 3 }}
+                        >
+                            <Box sx={{ textAlign: 'center', minWidth: '60px' }}>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#81C784', fontSize: { xs: '2rem', sm: '3.75rem' } }}>{census.defer}</Typography>
                                 <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>DEFER</Typography>
                             </Box>
-                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-                            <Box sx={{ textAlign: 'center' }}>
-                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#FFB74D' }}>{census.reschedule}</Typography>
+                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)', display: { xs: 'none', sm: 'block' } }} />
+                            <Box sx={{ textAlign: 'center', minWidth: '60px' }}>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#FFB74D', fontSize: { xs: '2rem', sm: '3.75rem' } }}>{census.reschedule}</Typography>
                                 <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>RESCHEDULE</Typography>
                             </Box>
-                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-                            <Box sx={{ textAlign: 'center' }}>
-                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#64B5F6' }}>{census.carryOver}</Typography>
+                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)', display: { xs: 'none', sm: 'block' } }} />
+                            <Box sx={{ textAlign: 'center', minWidth: '60px' }}>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#64B5F6', fontSize: { xs: '2rem', sm: '3.75rem' } }}>{census.carryOver}</Typography>
                                 <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>CARRY-OVER</Typography>
                             </Box>
-                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-                            <Box sx={{ textAlign: 'center' }}>
-                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#4FC3F7' }}>{census.hospitalize}</Typography>
+                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)', display: { xs: 'none', sm: 'block' } }} />
+                            <Box sx={{ textAlign: 'center', minWidth: '60px' }}>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#4FC3F7', fontSize: { xs: '2rem', sm: '3.75rem' } }}>{census.hospitalize}</Typography>
                                 <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>STAY</Typography>
                             </Box>
-                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-                            <Box sx={{ textAlign: 'center' }}>
-                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#FFD180' }}>{census.noShow}</Typography>
+                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)', display: { xs: 'none', sm: 'block' } }} />
+                            <Box sx={{ textAlign: 'center', minWidth: '60px' }}>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#FFD180', fontSize: { xs: '2rem', sm: '3.75rem' } }}>{census.noShow}</Typography>
                                 <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>NO-SHOW</Typography>
                             </Box>
-                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-                            <Box sx={{ textAlign: 'center' }}>
-                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#E57373' }}>{census.cancel}</Typography>
+                            <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)', display: { xs: 'none', sm: 'block' } }} />
+                            <Box sx={{ textAlign: 'center', minWidth: '60px' }}>
+                                <Typography variant="h2" sx={{ fontWeight: 1000, color: '#E57373', fontSize: { xs: '2rem', sm: '3.75rem' } }}>{census.cancel}</Typography>
                                 <Typography variant="caption" sx={{ fontWeight: 900, opacity: 0.9, letterSpacing: 1.5 }}>CANCEL</Typography>
                             </Box>
                         </Stack>
@@ -1352,46 +1386,50 @@ const EndOfDayModal = React.memo(({
                 {/* HEADER: CLINICAL ZOOM STYLE */}
                 <Box sx={{
                     bgcolor: '#5D4037', color: 'white', p: 2.5,
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                    display: 'flex', 
+                    flexDirection: { xs: 'column', md: 'row' },
+                    justifyContent: 'space-between', 
+                    alignItems: { xs: 'flex-start', md: 'center' },
+                    gap: 2
                 }}>
-                    <Stack direction="row" spacing={2} alignItems="center" sx={{ width: '100%' }}>
+                    <Stack direction="row" spacing={2} alignItems="center" sx={{ width: { xs: '100%', md: 'auto' } }}>
                         <WarningAmberIcon fontSize="large" sx={{ color: '#FFD180' }} />
-                        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <Typography variant="h5" sx={{ fontWeight: '1000', textTransform: 'uppercase', whiteSpace: 'nowrap', letterSpacing: 1.2, fontSize: '1.25rem' }}>
-                                QUEUE INTEGRITY WIZARD
-                            </Typography>
-                            <Box sx={{ flex: 1, borderBottom: '2px dashed rgba(255,255,255,0.3)', mx: 1, height: '2px' }} />
-
-                            {/* SILO TABS: THE CLINICAL SEGMENTATION */}
-                            <Tabs
-                                value={activeTab}
-                                onChange={(e, v) => setActiveTab(v)}
-                                textColor="inherit"
-                                indicatorColor="primary"
-                                sx={{
-                                    '& .MuiTabs-indicator': { backgroundColor: '#FFD180', height: 4 },
-                                    '& .MuiTab-root': { color: 'rgba(255,255,255,0.7)', fontWeight: 1000, fontSize: '0.85rem' },
-                                    '& .Mui-selected': { color: '#FFD180 !important' }
-                                }}
-                            >
-                                <Tab label={
-                                    <Badge badgeContent={siloOnline.length} color="secondary" invisible={siloOnline.length === 0} sx={{ px: 1 }}>
-                                        📡 ONLINE
-                                    </Badge>
-                                } />
-                                <Tab label={
-                                    <Badge badgeContent={siloScheduled.length} color="secondary" invisible={siloScheduled.length === 0} sx={{ px: 1 }}>
-                                        📅 SCHEDULED
-                                    </Badge>
-                                } />
-                                <Tab label={
-                                    <Badge badgeContent={siloActive.length} color="secondary" invisible={siloActive.length === 0} sx={{ px: 1 }}>
-                                        🚑 ACTIVE
-                                    </Badge>
-                                } />
-                            </Tabs>
-                        </Box>
+                        <Typography variant="h5" sx={{ fontWeight: '1000', textTransform: 'uppercase', whiteSpace: 'nowrap', letterSpacing: 1.2, fontSize: '1.25rem' }}>
+                            QUEUE INTEGRITY WIZARD
+                        </Typography>
                     </Stack>
+                    
+                    {/* SILO TABS: THE CLINICAL SEGMENTATION */}
+                    <Tabs
+                        value={activeTab}
+                        onChange={(e, v) => setActiveTab(v)}
+                        textColor="inherit"
+                        indicatorColor="primary"
+                        variant="scrollable"
+                        scrollButtons="auto"
+                        sx={{
+                            width: { xs: '100%', md: 'auto' },
+                            '& .MuiTabs-indicator': { backgroundColor: '#FFD180', height: 4 },
+                            '& .MuiTab-root': { color: 'rgba(255,255,255,0.7)', fontWeight: 1000, fontSize: '0.85rem' },
+                            '& .Mui-selected': { color: '#FFD180 !important' }
+                        }}
+                    >
+                        <Tab label={
+                            <Badge badgeContent={siloOnline.length} color="secondary" invisible={siloOnline.length === 0} sx={{ px: 1 }}>
+                                📡 ONLINE
+                            </Badge>
+                        } />
+                        <Tab label={
+                            <Badge badgeContent={siloScheduled.length} color="secondary" invisible={siloScheduled.length === 0} sx={{ px: 1 }}>
+                                📅 SCHEDULED
+                            </Badge>
+                        } />
+                        <Tab label={
+                            <Badge badgeContent={siloActive.length} color="secondary" invisible={siloActive.length === 0} sx={{ px: 1 }}>
+                                🚑 ACTIVE
+                            </Badge>
+                        } />
+                    </Tabs>
                 </Box>
 
                 {/* 🕹️ BATCH COMMAND STRIP (Phase 5.6.19: Action-First Architecture) */}
@@ -1399,10 +1437,14 @@ const EndOfDayModal = React.memo(({
                     <Box sx={{ 
                         px: 3, py: 1.5, bgcolor: '#FAFAFA', borderBottom: '2px solid #5D4037', 
                         display: 'flex', alignItems: 'center', gap: 2, 
-                        transition: 'all 0.3s ease-in-out'
+                        transition: 'all 0.3s ease-in-out',
+                        overflowX: 'auto',
+                        whiteSpace: 'nowrap',
+                        '&::-webkit-scrollbar': { height: '6px' },
+                        '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(93, 64, 55, 0.2)', borderRadius: '3px' }
                     }}>
                         {/* 1. BATCH ACTION BUTTONS */}
-                        <Stack direction="row" sx={{ border: '2px solid #5D4037', borderRadius: 1.2, overflow: 'hidden', bgcolor: '#FFF' }}>
+                        <Stack direction="row" sx={{ border: '2px solid #5D4037', borderRadius: 1.2, overflow: 'hidden', bgcolor: '#FFF', flexShrink: 0 }}>
                             {activeTab === 0 ? (
                                 <>
                                     <Button
@@ -1470,7 +1512,7 @@ const EndOfDayModal = React.memo(({
 
                         {/* 2. DYNAMIC STAGING AREA */}
                         {stagedBulkAction && (
-                            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5, animation: 'slideInRight 0.3s ease-out' }}>
+                            <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5, animation: 'slideInRight 0.3s ease-out', flexShrink: 0 }}>
                                 <Divider orientation="vertical" flexItem sx={{ height: 24, borderRightWidth: 2, borderColor: '#D7CCC8' }} />
                                 <Typography variant="caption" sx={{ fontWeight: 1000, color: '#5D4037', whiteSpace: 'nowrap' }}>
                                     ✍️ REASON FOR {currentSiloPatients.length} {
@@ -1548,7 +1590,7 @@ const EndOfDayModal = React.memo(({
                 )}
 
                 {/* CONTENT AREA: SILO-SPECIFIC LIST */}
-                <Box sx={{ flex: 1, overflowY: 'auto', p: 3, bgcolor: '#F5F5F5' }}>
+                <Box sx={{ flex: 1, overflow: 'auto', p: 3, bgcolor: '#F5F5F5' }}>
                     <Stack spacing={3}>
                         {groupedSiloItems.map((item) => {
                             const patient = item.patient;
@@ -1594,17 +1636,21 @@ const EndOfDayModal = React.memo(({
                 {/* FOOTER: PRE-FLIGHT SUMMARY SHIELD */}
                 <Box sx={{
                     px: 3, py: 2, borderTop: '2px solid #5D4037',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    display: 'flex', 
+                    flexDirection: { xs: 'column', sm: 'row' },
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    gap: 2,
                     bgcolor: isConfirming ? '#FFF8E1' : 'white', // Warm review amber
                     position: 'relative', transition: 'all 0.3s ease'
                 }}>
                     {/* THE CENTRAL CENSUS SHIELD: MOVED TO MAIN CONTAINER FOR CENTERING */}
 
-                    <Typography variant="caption" sx={{ fontWeight: '1000', color: isForced ? '#D32F2F' : '#9E9E9E', maxWidth: '400px', lineHeight: 1.3, fontSize: '0.72rem' }}>
+                    <Typography variant="caption" sx={{ fontWeight: '1000', color: isForced ? '#D32F2F' : '#9E9E9E', maxWidth: '400px', lineHeight: 1.3, fontSize: '0.72rem', textAlign: { xs: 'center', sm: 'left' } }}>
                         {isForced && "MANDATORY RECOVERY: System detected unresolved cases."}
                     </Typography>
 
-                    <Stack direction="row" spacing={2}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ width: { xs: '100%', sm: 'auto' } }}>
                         {(!isForced || isConfirming) && (
                             <Button
                                 variant="outlined"
@@ -1617,7 +1663,8 @@ const EndOfDayModal = React.memo(({
                                     border: '2px solid #5D4037 !important', 
                                     color: '#5D4037',
                                     bgcolor: 'white',
-                                    fontWeight: '1000', px: 3,
+                                    fontWeight: '1000', px: 3, py: 1.2,
+                                    width: { xs: '100%', sm: 'auto' },
                                     '&:hover': { bgcolor: '#F5F5F5', borderColor: '#000' }
                                 }}
                             >
@@ -1635,6 +1682,7 @@ const EndOfDayModal = React.memo(({
                                 bgcolor: isGateLocked ? '#F5F5F5' : (isConfirming ? '#E65100' : '#D32F2F'),
                                 color: isGateLocked ? '#9E9E9E' : 'white', 
                                 fontWeight: '1000', px: 5, py: 1.2,
+                                width: { xs: '100%', sm: 'auto' },
                                 '&:hover': { bgcolor: isConfirming ? '#BF360C' : '#B71C1C' },
                                 boxShadow: isGateLocked ? 'none' : '4px 4px 0px rgba(0,0,0,0.2)',
                                 letterSpacing: 1.5, fontSize: '0.9rem',

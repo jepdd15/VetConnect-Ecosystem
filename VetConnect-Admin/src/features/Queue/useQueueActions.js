@@ -102,12 +102,15 @@ export function useQueueActions() {
 
     // T4.90: Push notification — fire and forget
     const pushStatus = (row.status === 'on-hold' && newStatus === 'in-consult') ? 'resumed' : newStatus;
+    const formattedTicket = row.queueNumber
+      ? `${row.ticketPrefix ? `${row.ticketPrefix}-` : ''}${String(row.queueNumber).padStart(3, '0')}`
+      : '';
     sendPushNotification({
       ownerId: row.ownerId,
       status: pushStatus,
       petName: row.petName,
       vetName: staffSignature,
-      ticketNumber: row.queueNumber,
+      ticketNumber: formattedTicket,
       appointmentId: row.id,
       sentBy: staffSignature,
     });

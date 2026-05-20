@@ -89,7 +89,13 @@ export default function Staff() {
       {/* 1. BOXED FORENSIC HEADER */}
       <Box sx={{ flexShrink: 0 }}>
         <Paper sx={{
-          p: 2.5, px: 4, display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center',
+          p: 2.5, 
+          pl: { xs: 8, md: 4 }, 
+          pr: 4, 
+          display: 'flex', 
+          flexWrap: 'wrap', 
+          gap: 2, 
+          alignItems: 'center',
           bgcolor: COLORS.cream, border: 'none', borderBottom: `2px solid ${COLORS.accent}`, borderRadius: 0, boxShadow: 'none', width: '100%'
         }}>
           <Typography variant="h4" sx={{ fontFamily: FONT, fontWeight: 1000, color: COLORS.brand, whiteSpace: 'nowrap', textTransform: 'uppercase', flexShrink: 0, mr: 1, letterSpacing: 1, fontSize: '1.5rem', lineHeight: 1 }}>
@@ -97,7 +103,18 @@ export default function Staff() {
           </Typography>
 
           {tab === 0 && (
-            <>
+            <Box sx={{
+              display: 'flex',
+              gap: 2,
+              alignItems: 'center',
+              flexGrow: 1,
+              flexWrap: { xs: 'nowrap', lg: 'wrap' },
+              overflowX: { xs: 'auto', lg: 'visible' },
+              pb: { xs: 0.5, lg: 0 },
+              width: { xs: '100%', lg: 'auto' },
+              '&::-webkit-scrollbar': { height: '6px' },
+              '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(93, 64, 55, 0.2)', borderRadius: '3px' }
+            }}>
               {/* Search */}
               <TextField
                 variant="outlined"
@@ -121,7 +138,7 @@ export default function Staff() {
               />
 
               {/* Filters grouped */}
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexShrink: 0 }}>
                 <TextField select size="small" value={filterDept} onChange={(e) => setFilterDept(e.target.value)} sx={{ minWidth: 160, bgcolor: COLORS.cardBg, '& .MuiOutlinedInput-notchedOutline': { borderColor: `${COLORS.accent}33` } }}>
                   <MenuItem value="All">All Departments</MenuItem>
                   {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
@@ -131,19 +148,17 @@ export default function Staff() {
               <Typography variant="body2" sx={{ fontFamily: FONT, color: COLORS.accent, fontWeight: 900, whiteSpace: 'nowrap', flexShrink: 0, fontStyle: 'italic', ml: 1 }}>
                 {filteredStaff.length} Records
               </Typography>
-            </>
-          )}
 
-          <Box sx={{ flexGrow: 1 }} />
+              <Box sx={{ flexGrow: 1 }} />
 
-          {tab === 0 && (
-            <Button
-              variant="contained" startIcon={<PersonAddIcon />}
-              sx={{ bgcolor: COLORS.sky, fontFamily: FONT, fontWeight: 900, boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
-              onClick={() => { setSelectedItem(null); setOpen(true); }}
-            >
-              Authorize Staff
-            </Button>
+              <Button
+                variant="contained" startIcon={<PersonAddIcon />}
+                sx={{ flexShrink: 0, bgcolor: COLORS.sky, fontFamily: FONT, fontWeight: 900, boxShadow: '4px 4px 0px rgba(58, 190, 249, 0.15)', textTransform: 'uppercase', letterSpacing: 1, px: 3, py: 1, borderRadius: 0, border: `2px solid ${COLORS.skyHover}`, '&:hover': { bgcolor: COLORS.skyHover } }}
+                onClick={() => { setSelectedItem(null); setOpen(true); }}
+              >
+                Authorize Staff
+              </Button>
+            </Box>
           )}
         </Paper>
       </Box>

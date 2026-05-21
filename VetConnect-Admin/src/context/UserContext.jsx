@@ -39,8 +39,16 @@ export const UserProvider = ({ children }) => {
   const STAFF_ROLES = ['admin', 'staff', 'veterinarian', 'groomer'];
   const isAdmin = !!profile && STAFF_ROLES.includes(profile.role || profile.accessLevel);
 
+  // System admin controls Staff Management (creates, edits, revokes).
+  // Fallback: Default legacy profiles without an accessLevel field to 'admin' (access level) to prevent lockout.
+  const isSystemAdmin = !!profile && (
+    profile.accessLevel === 'admin' ||
+    (profile.role === 'admin' && !('accessLevel' in profile)) ||
+    !('accessLevel' in profile)
+  );
+
   return (
-    <UserContext.Provider value={{ user, profile, isAdmin, loading }}>
+    <UserContext.Provider value={{ user, profile, isAdmin, isSystemAdmin, loading }}>
       {children}
     </UserContext.Provider>
   );

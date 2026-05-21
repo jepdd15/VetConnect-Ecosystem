@@ -18,8 +18,10 @@ import StaffTable from './components/StaffTable';
 import StaffActivityLog from './components/StaffActivityLog';
 import StaffFormModal from './modals/StaffFormModal';
 import ConfirmRevokeModal from './modals/ConfirmRevokeModal';
+import { useUser } from '../../context/UserContext';
 
 export default function Staff() {
+  const { user } = useUser();
   const { staffList, departments, getWorkload, activeAppointments, loading, saveStaff, removeStaff } = useStaffManager();
 
   // UI STATES
@@ -186,7 +188,7 @@ export default function Staff() {
       {/* 3. CONTENT AREA (FLEX: 1) */}
       <Box sx={{ flexGrow: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {tab === 0 ? (
-          <StaffTable data={filteredStaff} getWorkload={getWorkload} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} departments={departments} loading={loading} />
+          <StaffTable data={filteredStaff} getWorkload={getWorkload} onEdit={(row) => { setSelectedItem(row); setOpen(true); }} onDelete={handleDelete} departments={departments} loading={loading} currentUserId={user?.uid} />
         ) : (
           <StaffActivityLog />
         )}
@@ -194,7 +196,7 @@ export default function Staff() {
 
       {/* THE MODAL */}
       {open && (
-        <StaffFormModal key={selectedItem?.id || 'new_staff'} open={open} onClose={() => setOpen(false)} item={selectedItem} dynamicDepartments={departments} onSave={handleSave} />
+        <StaffFormModal key={selectedItem?.id || 'new_staff'} open={open} onClose={() => setOpen(false)} item={selectedItem} dynamicDepartments={departments} onSave={handleSave} currentUserId={user?.uid} />
       )}
 
       {/* CONFIRM REVOKE MODAL */}

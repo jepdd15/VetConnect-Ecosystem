@@ -8,7 +8,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PhoneIcon from '@mui/icons-material/Phone';
 
-export default function StaffTable({ data, getWorkload, onEdit, onDelete, departments, loading }) {
+export default function StaffTable({ data, getWorkload, onEdit, onDelete, departments, loading, currentUserId }) {
 
   const clinicalFlatStyle = {
     background: COLORS.cardBg,
@@ -76,12 +76,30 @@ export default function StaffTable({ data, getWorkload, onEdit, onDelete, depart
     },
     {
       field: 'actions', headerName: 'Actions', flex: 0.7, minWidth: 100, align: 'center', headerAlign: 'center',
-      renderCell: (p) => (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', gap: 1 }}>
-          <Tooltip title="Edit Profile"><IconButton color="primary" size="small" onClick={() => onEdit(p.row)}><EditIcon fontSize="small" /></IconButton></Tooltip>
-          <Tooltip title="Revoke Access"><IconButton color="error" size="small" onClick={() => onDelete(p.row.id, p.row.fullName)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
-        </Box>
-      )
+      renderCell: (p) => {
+        const isSelf = p.row.id === currentUserId;
+        return (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', gap: 1 }}>
+            <Tooltip title="Edit Profile">
+              <IconButton color="primary" size="small" onClick={() => onEdit(p.row)}>
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={isSelf ? "You cannot revoke your own access" : "Revoke Access"}>
+              <span>
+                <IconButton
+                  color="error"
+                  size="small"
+                  onClick={() => onDelete(p.row.id, p.row.fullName)}
+                  disabled={isSelf}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
+        );
+      }
     }
   ];
 

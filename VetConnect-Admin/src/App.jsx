@@ -79,7 +79,7 @@ const STAFF_ROLES = ['admin', 'staff', 'veterinarian', 'groomer'];
 
 // --- THE SECURE APP SHELL ---
 function AppShell() {
-  const { user, profile, loading } = useUser();
+  const { user, profile, loading, isSystemAdmin } = useUser();
 
   // T4.137 — Password change dialog state
   const [currentPw, setCurrentPw] = React.useState('');
@@ -357,7 +357,7 @@ function AppShell() {
                   <Route path="/patients/:id" element={<PatientDashboard />} />
                   <Route path="/services" element={<Services />} />
                   <Route path="/inventory" element={<Inventory />} />
-                  <Route path="/staff" element={<Staff />} />
+                  <Route path="/staff" element={isSystemAdmin ? <Staff /> : <Navigate to="/" replace />} />
                   <Route path="/sales" element={<Sales />} />
                   <Route path="/expenses" element={<Expenses />} />
                   <Route path="/monitor" element={<Monitor />} />

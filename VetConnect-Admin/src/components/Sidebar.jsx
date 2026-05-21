@@ -57,11 +57,13 @@ export default function Sidebar({ onLogout, lowStockCount = 0 }) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const { profile } = useUser();
+  const { profile, isSystemAdmin } = useUser();
 
-
-  // T4.154: All staff see all menu items — no filtering needed.
-  const visibleMenuItems = menuItems;
+  // Filter menu items: gate Staff management to admins only
+  const visibleMenuItems = menuItems.filter(item => {
+    if (item.path === '/staff') return isSystemAdmin;
+    return true;
+  });
 
   const handleNavClick = (path, action) => {
     if (action === 'retailPOS') {

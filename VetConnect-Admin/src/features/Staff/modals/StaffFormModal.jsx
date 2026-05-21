@@ -20,10 +20,11 @@ import ContactEmergencyIcon from '@mui/icons-material/ContactEmergency';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 
-export default function StaffFormModal({ open, onClose, item, dynamicDepartments, onSave }) {
+export default function StaffFormModal({ open, onClose, item, dynamicDepartments, onSave, currentUserId }) {
 
   const navigate = useNavigate();
   const isEditing = !!item;
+  const isSelf = item?.id === currentUserId;
 
   const [formData, setFormData] = useState({
     // Section 1: Identity (required)
@@ -222,8 +223,25 @@ export default function StaffFormModal({ open, onClose, item, dynamicDepartments
               2. ACCESS LEVEL &amp; SCHEDULING
             </Typography>
             <Paper elevation={0} sx={{ p: 3, bgcolor: COLORS.panelBg, border: `2px solid ${COLORS.accent}`, borderRadius: 0 }}>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12 }}>
+              <Grid container spacing={3}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField
+                    select
+                    label="Access Level *"
+                    fullWidth
+                    size="small"
+                    value={formData.accessLevel}
+                    onChange={setField('accessLevel')}
+                    disabled={isSelf}
+                    helperText={isSelf ? "You cannot change your own access level" : "System Admin allows managing other staff."}
+                    sx={sxField}
+                  >
+                    <MenuItem value="staff">Staff Member</MenuItem>
+                    <MenuItem value="admin">System Admin</MenuItem>
+                  </TextField>
+                </Grid>
+
+                <Grid size={{ xs: 12, md: 6 }}>
                   <FormControl fullWidth size="small" sx={sxField} error={!!errors.departments}>
                     <InputLabel>Assigned Departments *</InputLabel>
                     <Select

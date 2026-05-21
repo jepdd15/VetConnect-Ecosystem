@@ -156,6 +156,7 @@ export function useStaffManager() {
       ptrNumber: formData.ptrNumber || '',
       address: formData.address || '',
       emergencyContacts: formData.emergencyContacts || [],
+      rbac_migrated: true,
       updatedAt: serverTimestamp(),
     };
 

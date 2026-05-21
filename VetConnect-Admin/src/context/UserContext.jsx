@@ -17,9 +17,40 @@ export const UserProvider = ({ children }) => {
       if (authUser) {
         // If user is logged in, listen to their profile for real-time role updates
         const docRef = doc(db, "users", authUser.uid);
-        const unsubProfile = onSnapshot(docRef, (doc) => {
-          if (doc.exists()) {
-            setProfile({ id: doc.id, ...doc.data() });
+        const unsubProfile = onSnapshot(docRef, async (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setProfile({ id: docSnap.id, ...data });
+
+            // RUN ONE-TIME DATABASE MIGRATION TO ADD accessLevel: 'admin' TO ALL EXISTING STAFF
+            const STAFF_ROLES = ['admin', 'staff', 'veterinarian', 'groomer'];
+            if (STAFF_ROLES.includes(data.role) && !window.rbacMigrationRun) {
+              window.rbacMigrationRun = true;
+              try {
+                const { collection, getDocs, writeBatch } = await import('firebase/firestore');
+                const usersSnap = await getDocs(collection(db, "users"));
+                const batch = writeBatch(db);
+                let migrationCount = 0;
+
+                usersSnap.forEach((uDoc) => {
+                  const uData = uDoc.data();
+                  if (STAFF_ROLES.includes(uData.role) && !uData.rbac_migrated) {
+                    batch.update(doc(db, "users", uDoc.id), {
+                      accessLevel: 'admin',
+                      rbac_migrated: true
+                    });
+                    migrationCount++;
+                  }
+                });
+
+                if (migrationCount > 0) {
+                  await batch.commit();
+                  console.log(`[RBAC Migration] Successfully migrated ${migrationCount} staff profiles.`);
+                }
+              } catch (err) {
+                console.error('[RBAC Migration] Failed:', err);
+              }
+            }
           } else {
             setProfile(null);
           }
@@ -40,11 +71,11 @@ export const UserProvider = ({ children }) => {
   const isAdmin = !!profile && STAFF_ROLES.includes(profile.role || profile.accessLevel);
 
   // System admin controls Staff Management (creates, edits, revokes).
-  // Fallback: Default legacy profiles without an accessLevel field to 'admin' (access level) to prevent lockout.
+  // Fallback: Default legacy profiles without rbac_migrated to 'admin' (access level) to prevent lockout.
   const isSystemAdmin = !!profile && (
     profile.accessLevel === 'admin' ||
-    (profile.role === 'admin' && !('accessLevel' in profile)) ||
-    !('accessLevel' in profile)
+    profile.role === 'admin' ||
+    !profile.rbac_migrated
   );
 
   return (

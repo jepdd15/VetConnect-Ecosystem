@@ -1548,7 +1548,13 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
   // useMemo so it reacts to vaccineQueueDocs changes without
   // re-running all 200+ lines of clinical computation.
   const vaccineCompliance = useMemo(() => {
-    const totalActivePetsCount = pets.filter(p => !p.isArchived).length || pets.length;
+    // Count active pets that have at least one medical record OR are already in the reminder queue
+    const petsWithRecords = new Set(medicalRecords.map(r => r.petId).filter(Boolean));
+    const trackedPetsCount = pets.filter(p => 
+      !p.isArchived && 
+      (petsWithRecords.has(p.id) || vaccineQueueDocs.some(q => q.petId === p.id))
+    ).length;
+
     let overdueCount = 0;
     let petsWithOverdue = 0;
 
@@ -1561,12 +1567,12 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
       });
     });
 
-    const complianceRate = totalActivePetsCount > 0
-      ? Math.round(((totalActivePetsCount - petsWithOverdue) / totalActivePetsCount) * 100)
+    const complianceRate = trackedPetsCount > 0
+      ? Math.round(((trackedPetsCount - petsWithOverdue) / trackedPetsCount) * 100)
       : 0;
 
     return { overdueCount, petsWithOverdue, complianceRate };
-  }, [vaccineQueueDocs, pets]);
+  }, [vaccineQueueDocs, pets, medicalRecords]);
 
   // ── Derived: Historical min/max/avg per month (T2.338) ──────────
   const historical = useMemo(() => {

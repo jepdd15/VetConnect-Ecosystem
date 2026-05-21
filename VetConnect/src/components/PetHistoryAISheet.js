@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { sendChatMessage } from '../utils/chatbotService';
 import SimpleMarkdown from './SimpleMarkdown';
 import { COLORS } from '../theme/mobileTokens';
@@ -110,6 +111,7 @@ export default function PetHistoryAISheet({
   workerUrl,
   userId,
 }) {
+  const insets = useSafeAreaInsets();
   const [messages, setMessages]       = useState([]);
   const [input, setInput]             = useState('');
   const [loading, setLoading]         = useState(false);
@@ -335,8 +337,8 @@ export default function PetHistoryAISheet({
         </ScrollView>
 
         {/* Input row */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.inputRow}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={[styles.inputRow, { paddingBottom: Math.max(insets.bottom, 12) }]}>
             <TextInput
               style={styles.textInput}
               placeholder="Ask a question..."

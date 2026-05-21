@@ -254,49 +254,7 @@ export default function Dashboard() {
         {/* Right: Notifications + Export + Refresh */}
         <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
           {/* Notification bell — opens reminder panel */}
-          <Tooltip
-            title={actionCount > 0 ? `${actionCount} actionable item${actionCount !== 1 ? 's' : ''}` : 'No actions pending'}
-            arrow
-          >
-            <IconButton
-              onClick={handleOpenBell}
-              sx={{
-                color: isBellOpen ? COLORS.brand : COLORS.accent,
-                border: `2px solid ${COLORS.brand}`,
-                borderRadius: 0,
-                p: 0.75,
-                bgcolor: isBellOpen ? COLORS.cream : COLORS.cardBg,
-                boxShadow: isBellOpen ? `1px 1px 0px ${COLORS.brand}` : `2px 2px 0px ${COLORS.brand}`,
-                transform: isBellOpen ? 'translate(1px, 1px)' : 'none',
-                transition: 'transform 0.1s ease, box-shadow 0.1s ease',
-                '&:hover': { bgcolor: COLORS.cream },
-              }}
-              aria-label="Open reminders panel"
-            >
-              <Badge
-                badgeContent={actionCount}
-                max={99}
-                color="error"
-                overlap="circular"
-                sx={{
-                  '& .MuiBadge-badge': {
-                    fontFamily: FONT,
-                    fontWeight: 900,
-                    fontSize: '0.6rem',
-                    borderRadius: 0,
-                    border: `1px solid ${COLORS.brand}`,
-                    minWidth: 18,
-                    height: 18,
-                    padding: '0 4px',
-                  },
-                }}
-              >
-                {actionCount > 0
-                  ? <NotificationsActiveIcon sx={{ fontSize: 20 }} />
-                  : <NotificationsNoneIcon sx={{ fontSize: 20 }} />}
-              </Badge>
-            </IconButton>
-          </Tooltip>
+
 
           <Button
             onClick={handleExportCSV}

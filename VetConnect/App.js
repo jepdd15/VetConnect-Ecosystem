@@ -1,5 +1,6 @@
 // The React Navigation stack. Determines if the user sees the Authentication flow or the Main App flow based on their Firebase Auth state.
 
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import * as SplashScreen from "expo-splash-screen";
@@ -110,8 +111,9 @@ export default function App() {
   }
 
   return (
-    <NetworkProvider>
-    <NavigationContainer onReady={onLayoutRootView} onUnhandledAction={() => {}}>
+    <SafeAreaProvider>
+      <NetworkProvider>
+      <NavigationContainer onReady={onLayoutRootView} onUnhandledAction={() => {}}>
       <Stack.Navigator
         initialRouteName={initialRoute}
         screenOptions={{
@@ -267,5 +269,6 @@ export default function App() {
       </Stack.Navigator>
     </NavigationContainer>
     </NetworkProvider>
+    </SafeAreaProvider>
   );
 }

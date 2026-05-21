@@ -447,21 +447,7 @@ export default function Inventory() {
             '&::-webkit-scrollbar': { height: '6px' },
             '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(93, 64, 55, 0.2)', borderRadius: '3px' }
           }}>
-            {activeTab === 0 && !showArchived && (
-              <Button
-                variant="outlined"
-                startIcon={<PrintIcon />}
-                disabled={lowStockItems.length === 0}
-                onClick={() => printReorderList(lowStockItems, clinicSettings, () => showToast('Pop-up blocked — allow pop-ups for this site.', 'warning'))}
-                sx={{
-                  flexShrink: 0,
-                  fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 2, borderRadius: 0, border: '2px solid',
-                  color: COLORS.warning, borderColor: `${COLORS.warning}33`, '&:hover': { bgcolor: COLORS.warningSurface, borderColor: COLORS.warning }
-                }}
-              >
-                Reorder List{lowStockItems.length > 0 ? ` (${lowStockItems.length})` : ''}
-              </Button>
-            )}
+
 
             {activeTab === 0 && (
               <Button
@@ -505,22 +491,7 @@ export default function Inventory() {
               </Button>
             )}
 
-            {activeTab === 0 && !showArchived && (
-              <Button
-                variant="outlined"
-                startIcon={<DeleteSweepIcon />}
-                onClick={() => setOpenDisposal(true)}
-                sx={{
-                  flexShrink: 0,
-                  fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1, px: 2, borderRadius: 0, border: '2px solid',
-                  color: expiredItems.length > 0 ? COLORS.danger : COLORS.accent, 
-                  borderColor: expiredItems.length > 0 ? COLORS.danger : `${COLORS.accent}33`,
-                  '&:hover': { bgcolor: COLORS.dangerSurface, borderColor: COLORS.danger }
-                }}
-              >
-                Dispose Expired{expiredItems.length > 0 ? ` (${expiredItems.length})` : ''}
-              </Button>
-            )}
+
 
             <Button
               variant="contained"

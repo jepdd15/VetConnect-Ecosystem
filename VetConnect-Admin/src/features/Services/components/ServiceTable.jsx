@@ -128,7 +128,6 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
               <TableCell sx={headerSx}>
                 <TableSortLabel active={orderBy === 'price'} direction={orderBy === 'price' ? order : 'asc'} onClick={() => handleRequestSort('price')}>Price</TableSortLabel>
               </TableCell>
-              <TableCell sx={headerSx}>Operational Tags</TableCell>
               <TableCell sx={{ ...headerSx, textAlign: 'center' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -136,7 +135,7 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
           <TableBody>
             {loading && (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 10, border: 'none' }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 10, border: 'none' }}>
                   <CircularProgress sx={{ color: COLORS.accent }} />
                   <Typography variant="body2" color="textSecondary" fontWeight="bold" sx={{ mt: 2 }}>
                     Loading services...
@@ -219,14 +218,6 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
                       )}
                     </TableCell>
 
-                    <TableCell>
-                      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                        {row.isWalkIn !== false && <Chip label="Walk-In" size="small" sx={{ bgcolor: COLORS.chipBlueBg, color: COLORS.medical, fontSize: 10, height: 20, fontWeight: 'bold', borderRadius: 0 }} />}
-                        {row.isInpatient && <Chip label="Confinement" size="small" sx={{ bgcolor: COLORS.warningSurface, color: COLORS.warning, fontSize: 10, height: 20, fontWeight: 'bold', borderRadius: 0 }} />}
-                        {row.isEmergency && <Chip label="Emergency" size="small" sx={{ bgcolor: COLORS.dangerSurface, color: COLORS.danger, fontSize: 10, height: 20, fontWeight: 'bold', borderRadius: 0 }} />}
-                      </Box>
-                    </TableCell>
-
                     <TableCell align="center" onClick={(e) => e.stopPropagation()}>
                       <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}>
                         <Tooltip title="View Audit Trail" arrow>
@@ -269,7 +260,7 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
 
                   {/* Expandable SOP row */}
                   <TableRow>
-                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
+                    <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={6}>
                       <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                         <Box sx={{ margin: 1, my: 1, p: 2, bgcolor: COLORS.formBg, borderRadius: 0, border: '2px solid', borderColor: badgeColor, boxShadow: '4px 4px 0px rgba(0,0,0,0.05)' }}>
                           <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: badgeColor, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -289,7 +280,7 @@ export default function ServiceTable({ data, onEdit, onArchive, onRestore, onDel
 
             {!loading && sortedData.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 10, color: COLORS.textMuted, fontStyle: 'italic', border: 'none' }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 10, color: COLORS.textMuted, fontStyle: 'italic', border: 'none' }}>
                   {showArchived ? 'No archived services.' : 'No services found. Adjust filters or click "New Service".'}
                 </TableCell>
               </TableRow>

@@ -24,7 +24,6 @@ import SendIcon from '@mui/icons-material/Send';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import LockClockIcon from '@mui/icons-material/LockClock';
 import {
   collection, getDocs, addDoc, query, where, orderBy, limit, Timestamp,
 } from 'firebase/firestore';
@@ -37,17 +36,8 @@ import { useUser } from '../context/UserContext';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STAFF_ROLES = ['admin', 'staff', 'veterinarian', 'groomer'];
-const COOLDOWN_KEY = 'promoCooldownEnd';
-const COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Formats a seconds-remaining value into "Xm Ys" display. */
-function formatCountdown(totalSeconds) {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}m ${String(s).padStart(2, '0')}s`;
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -79,9 +69,7 @@ export default function BulkPromoDialog({ open, onClose, onSent }) {
   const [sending, setSending] = useState(false);
   const [result, setResult]   = useState(null); // { push, email, sms, failed }
 
-  // Cooldown
-  const [cooldownEnd, setCooldownEnd]           = useState(null); // Date | null
-  const [cooldownRemaining, setCooldownRemaining] = useState(0);   // seconds
+
 
   // Feedback
   const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
@@ -105,39 +93,9 @@ export default function BulkPromoDialog({ open, onClose, onSent }) {
       .then((snap) => setTemplates(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
       .catch(() => setTemplates([]));
 
-    // Restore cooldown from localStorage
-    const stored = localStorage.getItem(COOLDOWN_KEY);
-    if (stored) {
-      const end = new Date(stored);
-      if (end > new Date()) {
-        setCooldownEnd(end);
-      } else {
-        localStorage.removeItem(COOLDOWN_KEY);
-        setCooldownEnd(null);
-      }
-    }
   }, [open]);
 
-  // ── Cooldown countdown ticker ─────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!cooldownEnd) {
-      setCooldownRemaining(0);
-      return;
-    }
-
-    const tick = () => {
-      const remaining = Math.max(0, Math.ceil((cooldownEnd - Date.now()) / 1000));
-      setCooldownRemaining(remaining);
-      if (remaining <= 0) {
-        setCooldownEnd(null);
-        localStorage.removeItem(COOLDOWN_KEY);
-      }
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [cooldownEnd]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -308,11 +266,6 @@ export default function BulkPromoDialog({ open, onClose, onSent }) {
       }).catch(() => {});
     }
 
-    // ── Activate 1-hour cooldown ─────────────────────────────────────────
-    const cooldownDate = new Date(Date.now() + COOLDOWN_MS);
-    setCooldownEnd(cooldownDate);
-    localStorage.setItem(COOLDOWN_KEY, cooldownDate.toISOString());
-
     setResult(counts);
     setStep('success');
     setSending(false);
@@ -329,7 +282,7 @@ export default function BulkPromoDialog({ open, onClose, onSent }) {
 
   // ── Derived state ─────────────────────────────────────────────────────────
 
-  const isPreviewDisabled = !title.trim() || !body.trim() || loadingRecipients || cooldownRemaining > 0;
+  const isPreviewDisabled = !title.trim() || !body.trim() || loadingRecipients;
   const isSendDisabled    = sending;
 
   // ── Render helpers ────────────────────────────────────────────────────────
@@ -379,24 +332,7 @@ export default function BulkPromoDialog({ open, onClose, onSent }) {
         {step === 'compose' && (
           <DialogContent sx={{ pt: 3, pb: 1 }}>
 
-            {/* Cooldown warning banner */}
-            {cooldownRemaining > 0 && (
-              <Box sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                p: 1.5,
-                mb: 2.5,
-                bgcolor: COLORS.cream,
-                border: `2px solid ${COLORS.warning}`,
-                borderRadius: 0,
-              }}>
-                <LockClockIcon sx={{ color: COLORS.warning, fontSize: 18, flexShrink: 0 }} />
-                <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', fontWeight: 700, color: COLORS.warning }}>
-                  Last promo sent recently. Send button available again in {formatCountdown(cooldownRemaining)}.
-                </Typography>
-              </Box>
-            )}
+
 
             {/* Template picker — only shown when saved templates exist */}
             {templates.length > 0 && (
@@ -691,14 +627,7 @@ export default function BulkPromoDialog({ open, onClose, onSent }) {
                 Last sent: just now
               </Typography>
 
-              {cooldownRemaining > 0 && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <LockClockIcon sx={{ color: COLORS.textMuted, fontSize: 16 }} />
-                  <Typography sx={{ fontFamily: FONT, fontSize: '0.82rem', color: COLORS.textMuted }}>
-                    Send button available again in {formatCountdown(cooldownRemaining)}
-                  </Typography>
-                </Box>
-              )}
+
             </Box>
           </DialogContent>
         )}

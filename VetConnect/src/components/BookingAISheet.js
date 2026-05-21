@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { sendChatMessage } from '../utils/chatbotService';
 import SimpleMarkdown from './SimpleMarkdown';
 import { COLORS } from '../theme/mobileTokens';
@@ -69,6 +70,7 @@ export default function BookingAISheet({
   userId,
   onAuditLog,
 }) {
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState([]);
   const messagesRef = useRef([]);
   const [input, setInput]       = useState('');
@@ -275,8 +277,8 @@ export default function BookingAISheet({
         </ScrollView>
 
         {/* Input row */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.inputRow}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={[styles.inputRow, { paddingBottom: Math.max(insets.bottom, 12) }]}>
             <TextInput
               style={styles.textInput}
               placeholder="Ask a question..."

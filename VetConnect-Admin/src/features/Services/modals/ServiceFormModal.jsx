@@ -29,9 +29,12 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
     || (item?.linkedProduct ? [item.linkedProduct] : []);
 
   // Build initial pricingTiers
-  const initTiers = item?.pricingTiers?.length > 0
-    ? item.pricingTiers
-    : [{ minWeight: 0, maxWeight: 10, price: 0 }];
+  const initTiers = (item?.pricingTiers?.length > 0 ? item.pricingTiers : [{ minWeight: 0, maxWeight: 10, price: 0 }])
+    .map(t => ({
+      minWeight: t.minWeight?.toString() ?? '',
+      maxWeight: t.maxWeight?.toString() ?? '',
+      price:     t.price?.toString()     ?? '',
+    }));
 
   const [formData, setFormData] = useState({
     name:          item?.name          || '',
@@ -57,7 +60,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
   const addTier = () => {
     setFormData(prev => ({
       ...prev,
-      pricingTiers: [...prev.pricingTiers, { minWeight: 0, maxWeight: 0, price: 0 }],
+      pricingTiers: [...prev.pricingTiers, { minWeight: '', maxWeight: '', price: '' }],
     }));
   };
 
@@ -71,7 +74,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
   const updateTier = (idx, field, value) => {
     setFormData(prev => {
       const tiers = [...prev.pricingTiers];
-      tiers[idx] = { ...tiers[idx], [field]: Number(value) || 0 };
+      tiers[idx] = { ...tiers[idx], [field]: value };
       return { ...prev, pricingTiers: tiers };
     });
   };
@@ -150,11 +153,20 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
       }
     }
 
+    const finalPricingTiers = formData.hasTieredPricing
+      ? formData.pricingTiers.map(t => ({
+          minWeight: parseFloat(t.minWeight) || 0,
+          maxWeight: parseFloat(t.maxWeight) || 0,
+          price:     parseFloat(t.price)     || 0,
+        }))
+      : [];
+
     const finalData = {
       ...formData,
-      price:      parsedPrice,
-      duration:   parsedDuration,
-      bufferTime: parsedBuffer,
+      price:        parsedPrice,
+      duration:     parsedDuration,
+      bufferTime:   parsedBuffer,
+      pricingTiers: finalPricingTiers,
     };
     onSave(finalData);
   };
@@ -259,8 +271,7 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                   InputProps={{ startAdornment: <InputAdornment position="start">₱</InputAdornment> }}
                   inputProps={{ min: 0 }}
                   sx={sxField}
-                  disabled={formData.hasTieredPricing}
-                  helperText={formData.hasTieredPricing ? "Override by weight tiers below" : ""}
+                  helperText={formData.hasTieredPricing ? "Fallback price when pet weight is unavailable" : ""}
                 />
               </Grid>
               <Grid size={{ xs: 6, md: 4 }}>

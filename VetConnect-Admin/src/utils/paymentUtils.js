@@ -182,3 +182,31 @@ export function validatePaymentInput({ amount, method, referenceNumber }) {
 
   return { valid: true, error: null };
 }
+
+// ─── paymentMethodBucket ──────────────────────────────────────────────────────
+
+/**
+ * Normalizes any payment-method string to one of four reporting buckets used by
+ * the Sales KPI cards, the method filter, and the daily_closings snapshot.
+ *
+ * Single source of truth so the aggregation and the filter cannot drift apart
+ * again (the T4.239 bug: KPIs and filter each matched capitalized literals while
+ * methods are stored lowercase). Handles three input forms:
+ *   - the lowercase enum (T4.237): cash | gcash | maya | bank | card | check | other
+ *   - legacy capitalized values: 'Cash' | 'GCash' | 'Card' | 'Bank Transfer'
+ *   - the EodSummary card labels: 'Cash' | 'GCash' | 'Card' | 'Bank Transfer'
+ *
+ * 'maya' folds into the 'gcash' bucket (the card is labeled "GCash / Maya").
+ * 'check' and 'other' return null — counted in total collected, no dedicated card.
+ *
+ * @param {string} method - Any payment-method string (case-insensitive).
+ * @returns {'cash'|'gcash'|'card'|'bank'|null}
+ */
+export function paymentMethodBucket(method) {
+  const m = (method || '').toLowerCase();
+  if (m === 'cash') return 'cash';
+  if (m === 'gcash' || m === 'maya') return 'gcash';
+  if (m === 'card') return 'card';
+  if (m === 'bank' || m === 'bank transfer') return 'bank';
+  return null;
+}

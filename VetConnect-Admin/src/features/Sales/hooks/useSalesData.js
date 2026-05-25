@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, query, orderBy, onSnapshot, where, Timestamp, doc, runTransaction, arrayUnion, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { makePulseEventId } from '../../../utils/pulseUtils';
+import { paymentMethodBucket } from '../../../utils/paymentUtils';
 import { db } from '../../../firebaseConfig';
 
 export function useSalesData(startDate, endDate, currentUser) {
@@ -108,6 +109,11 @@ export function useSalesData(startDate, endDate, currentUser) {
       let totalCustomDiscounts = 0;
       // T4.151: Track voided transactions for Z-report.
       let voidCount = 0, voidAmount = 0;
+      // T4.239 fix: payment methods are stored lowercase (T4.237 enum: cash/gcash/maya/bank/card/check/other).
+      // The prior code matched capitalized literals ('Cash', 'GCash', 'Bank Transfer'), so every per-method
+      // bucket summed to 0 — breaking the KPI cards AND the daily_closings per-method snapshot.
+      // paymentMethodBucket (shared with the Sales method filter) normalizes both the new lowercase enum
+      // and legacy capitalized values, and folds 'maya' into the gcash bucket.
       sales.forEach(sale => {
           if (sale.status === 'refunded') {
               refunds += sale.total;
@@ -123,22 +129,24 @@ export function useSalesData(startDate, endDate, currentUser) {
               if (sale.hasScPwdDiscount) totalDiscounts += discount;
               totalCollected += collected;
               totalCustomDiscounts += parseFloat(sale.customDiscountTotal || 0);
-              // T4.150: Distribute collected amount across tenders.
+              // T4.150 / T4.239: Distribute collected amount across tenders, bucketed by normalized method.
               // New sales have paymentTenders[]; legacy sales have only paymentMethod.
               if (sale.paymentTenders && sale.paymentTenders.length > 0) {
                 sale.paymentTenders.forEach(t => {
                   const tenderAmt = parseFloat(t.amount) || 0;
-                  if (t.method === 'Cash') cash += tenderAmt;
-                  else if (t.method?.includes('GCash')) gcash += tenderAmt;
-                  else if (t.method === 'Card') card += tenderAmt;
-                  else if (t.method === 'Bank Transfer') bank += tenderAmt;
+                  const b = paymentMethodBucket(t.method);
+                  if (b === 'cash') cash += tenderAmt;
+                  else if (b === 'gcash') gcash += tenderAmt;
+                  else if (b === 'card') card += tenderAmt;
+                  else if (b === 'bank') bank += tenderAmt;
                 });
               } else {
                 // Legacy fallback: single paymentMethod
-                if (sale.paymentMethod === 'Cash') cash += collected;
-                else if (sale.paymentMethod?.includes('GCash')) gcash += collected;
-                else if (sale.paymentMethod === 'Card') card += collected;
-                else if (sale.paymentMethod === 'Bank Transfer') bank += collected;
+                const b = paymentMethodBucket(sale.paymentMethod);
+                if (b === 'cash') cash += collected;
+                else if (b === 'gcash') gcash += collected;
+                else if (b === 'card') card += collected;
+                else if (b === 'bank') bank += collected;
               }
           }
       });

@@ -14,6 +14,7 @@ import EodSummary from './components/EodSummary';
 import { printViaIframe, downloadHtmlAsFile, emailReceiptToOwner } from '../../utils/receiptUtils';
 import { exportSalesCSV } from '../../utils/exportSalesCSV';
 import { printSalesLedger } from '../../utils/printSalesLedger';
+import { paymentMethodBucket } from '../../utils/paymentUtils';
 import POSModal from '../../components/POSModal';
 
 // Icons
@@ -145,12 +146,16 @@ export default function Sales() {
       const matchSearch = (s.petName || '').toLowerCase().includes(searchText.toLowerCase()) || 
                           (s.ownerName || '').toLowerCase().includes(searchText.toLowerCase()) ||
                           s.id.toLowerCase().includes(searchText.toLowerCase());
-      // T4.150: Match method filter against paymentTenders[] (with legacy fallback).
+      // T4.150 / T4.239: Match method filter against paymentTenders[] (with legacy fallback).
+      // Normalize both sides to reporting buckets so the capitalized card labels ('Cash', 'GCash',
+      // 'Bank Transfer') match the lowercase stored methods ('cash', 'gcash', 'maya', 'bank'). Uses
+      // the same paymentMethodBucket as the KPI aggregation so filter and totals stay consistent.
       const saleMethods = s.paymentTenders && s.paymentTenders.length > 0
         ? s.paymentTenders.map(t => t.method)
         : [s.paymentMethod];
+      const filterBuckets = filterMethod.map(paymentMethodBucket);
       const matchMethod = filterMethod.includes('All')
-        || saleMethods.some(m => filterMethod.includes(m));
+        || saleMethods.some(m => filterBuckets.includes(paymentMethodBucket(m)));
       const matchStatus = filterStatus === 'All' || (filterStatus === 'Paid' ? s.status !== 'refunded' : filterStatus === 'refunded' ? s.status === 'refunded' : true);
       const saleType = s.saleType || 'clinical';
       const matchType = filterType === 'All' || saleType === filterType;

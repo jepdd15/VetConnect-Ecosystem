@@ -41,6 +41,7 @@ import {
   recomputeBalance,
   buildPaymentDocPayload,
   validatePaymentInput,
+  paymentMethodBucket,
 } from '../paymentUtils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -261,5 +262,30 @@ describe('buildPaymentDocPayload — D1 schema', () => {
 
     // Exactly 10 top-level fields
     expect(Object.keys(payload)).toHaveLength(10);
+  });
+});
+
+describe('paymentMethodBucket — T4.239 KPI/filter normalization', () => {
+  it('maps the lowercase enum to reporting buckets', () => {
+    expect(paymentMethodBucket('cash')).toBe('cash');
+    expect(paymentMethodBucket('gcash')).toBe('gcash');
+    expect(paymentMethodBucket('maya')).toBe('gcash');   // folds into GCash/Maya card
+    expect(paymentMethodBucket('card')).toBe('card');
+    expect(paymentMethodBucket('bank')).toBe('bank');
+  });
+
+  it('maps legacy capitalized values and card labels (case-insensitive)', () => {
+    expect(paymentMethodBucket('Cash')).toBe('cash');
+    expect(paymentMethodBucket('GCash')).toBe('gcash');
+    expect(paymentMethodBucket('Bank Transfer')).toBe('bank');
+    expect(paymentMethodBucket('Card')).toBe('card');
+  });
+
+  it('returns null for uncategorized or empty methods', () => {
+    expect(paymentMethodBucket('check')).toBeNull();
+    expect(paymentMethodBucket('other')).toBeNull();
+    expect(paymentMethodBucket('')).toBeNull();
+    expect(paymentMethodBucket(null)).toBeNull();
+    expect(paymentMethodBucket(undefined)).toBeNull();
   });
 });

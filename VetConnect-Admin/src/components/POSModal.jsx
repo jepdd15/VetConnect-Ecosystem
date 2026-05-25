@@ -102,6 +102,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
   const [showCustomerNudge, setShowCustomerNudge] = useState(false);
   const [linkedClient, setLinkedClient] = useState(null);
+  // T4.238: Review-and-commit confirmation shown before every checkout commits.
+  const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [clientOptions, setClientOptions] = useState([]);
   const [clientSearchLoading, setClientSearchLoading] = useState(false);
 
@@ -1915,7 +1917,8 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                   if (isRetailMode) {
                     setShowCustomerNudge(true);
                   } else {
-                    handleCheckout();
+                    // T4.238: gate clinical checkout behind the review-and-commit dialog
+                    setShowReviewConfirm(true);
                   }
                 }}
                 disabled={
@@ -2002,9 +2005,10 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         <DialogActions sx={{ p: 2.5, bgcolor: COLORS.panelBg, display: 'flex', justifyContent: 'space-between', borderTop: `2px solid ${COLORS.border}` }}>
           <Button
             onClick={() => {
+              // T4.238: stage counter sale (no client), then open review-and-commit
               setLinkedClient(null);
               setShowCustomerNudge(false);
-              handleRetailCheckout(null);
+              setShowReviewConfirm(true);
             }}
             sx={{
               fontWeight: 900, borderRadius: 0, px: 3,
@@ -2018,8 +2022,9 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             variant="contained"
             disabled={!linkedClient}
             onClick={() => {
+              // T4.238: keep linked client, then open review-and-commit
               setShowCustomerNudge(false);
-              handleRetailCheckout(linkedClient);
+              setShowReviewConfirm(true);
             }}
             sx={{
               bgcolor: COLORS.sky, fontWeight: 900, borderRadius: 0, px: 4,
@@ -2044,6 +2049,127 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
             const newCart = [...cart]; newCart.splice(confirmRemove.index, 1); setCart(newCart);
             setConfirmRemove(null);
           }}>Remove</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* T4.238: Review-and-commit confirmation — shown before every checkout commits */}
+      <Dialog
+        open={showReviewConfirm}
+        onClose={() => setShowReviewConfirm(false)}
+        maxWidth="sm" fullWidth
+        PaperProps={{ sx: { borderRadius: 0, border: `2px solid ${COLORS.brand}`, boxShadow: `8px 8px 0px ${COLORS.brand}1A` } }}
+      >
+        <DialogTitle sx={{
+          bgcolor: COLORS.brand, color: COLORS.cardBg, fontWeight: 900,
+          display: 'flex', alignItems: 'center', gap: 1.5, py: 2,
+          textTransform: 'uppercase', letterSpacing: 1, fontSize: '0.95rem',
+        }}>
+          <PaidIcon /> Review &amp; Confirm Payment
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0, bgcolor: COLORS.cardBg }}>
+          {/* Patient / Customer */}
+          <Box sx={{ px: 3, py: 2, bgcolor: COLORS.surfaceHover, borderBottom: `1px solid ${COLORS.timelineRail}` }}>
+            <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.brand }}>
+              {isRetailMode
+                ? (linkedClient ? `Customer: ${linkedClient.fullName}` : 'Counter Sale (no client linked)')
+                : `Patient: ${patient.petName} (${patient.ownerName || 'Walk-In'})`}
+            </Typography>
+          </Box>
+
+          {/* Itemized list (scrollable) */}
+          <Box sx={{ px: 3, pt: 2 }}>
+            <Typography variant="caption" sx={{ fontWeight: 900, letterSpacing: 0.5, color: COLORS.textSecondary, textTransform: 'uppercase' }}>Items</Typography>
+          </Box>
+          <Box sx={{ px: 3, maxHeight: 220, overflowY: 'auto' }}>
+            {cart.map((item, idx) => (
+              <Box key={idx} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5, borderBottom: `1px dashed ${COLORS.timelineRail}` }}>
+                <Typography variant="body2" sx={{ pr: 2 }}>
+                  {item.name}{item.qty > 1 ? ` × ${item.qty}` : ''}
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  ₱{(item.price * item.qty).toFixed(2)}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+
+          {/* Totals */}
+          <Box sx={{ px: 3, py: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.25 }}>
+              <Typography variant="body2">Subtotal</Typography>
+              <Typography variant="body2">₱{financials.subtotal}</Typography>
+            </Box>
+            {parseFloat(financials.discount) > 0 && (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.25, color: COLORS.success }}>
+                <Typography variant="body2">
+                  Discount{applyScPwd ? ' (SC/PWD)' : billDiscountReason ? ` (${billDiscountReason})` : ''}
+                </Typography>
+                <Typography variant="body2">−₱{financials.discount}</Typography>
+              </Box>
+            )}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5, borderTop: `2px solid ${COLORS.border}`, mt: 0.5 }}>
+              <Typography variant="body2" sx={{ fontWeight: 900 }}>TOTAL</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 900 }}>₱{financials.total}</Typography>
+            </Box>
+            {parseFloat(financials.deposit) > 0 && (
+              <>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.25 }}>
+                  <Typography variant="body2">Less Deposit</Typography>
+                  <Typography variant="body2">−₱{financials.deposit}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.25 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>Balance Due</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>₱{financials.balanceDue}</Typography>
+                </Box>
+              </>
+            )}
+          </Box>
+
+          {/* Payment */}
+          <Box sx={{ px: 3, pb: 2 }}>
+            <Typography variant="caption" sx={{ fontWeight: 900, letterSpacing: 0.5, color: COLORS.textSecondary, textTransform: 'uppercase' }}>Payment</Typography>
+            {paymentTenders.map((t, idx) => {
+              const amt = parseFloat(t.amount) || (paymentTenders.length === 1 ? balanceDueNum : 0);
+              return (
+                <Box key={idx} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.25 }}>
+                  <Typography variant="body2">
+                    {PAYMENT_METHOD_LABELS[t.method] || t.method}
+                    {isRefNumberRequired(t.method) && t.referenceNumber ? ` (ref# ${t.referenceNumber})` : ''}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>₱{amt.toFixed(2)}</Typography>
+                </Box>
+              );
+            })}
+            {(() => {
+              const totalChange = paymentTenders.reduce((s, t) => s + getChangeDue(t), 0);
+              return totalChange > 0 ? (
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.25, mt: 0.5, borderTop: `1px dashed ${COLORS.timelineRail}` }}>
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>Change</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>₱{totalChange.toFixed(2)}</Typography>
+                </Box>
+              ) : null;
+            })()}
+          </Box>
+
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, bgcolor: COLORS.panelBg, display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${COLORS.timelineRail}` }}>
+          <Button onClick={() => setShowReviewConfirm(false)} disabled={loading} sx={{ color: COLORS.accent, fontWeight: 'bold', px: 3, borderRadius: 0 }}>
+            Go Back
+          </Button>
+          <Button
+            variant="contained" color="success" size="large"
+            disabled={loading}
+            startIcon={<PaidIcon />}
+            onClick={() => {
+              // T4.238: commit only after explicit review confirmation
+              setShowReviewConfirm(false);
+              if (isRetailMode) { handleRetailCheckout(linkedClient); }
+              else { handleCheckout(); }
+            }}
+            sx={{ px: 4, fontWeight: 900, borderRadius: 0, boxShadow: `4px 4px 0px ${COLORS.brand}` }}
+          >
+            {loading ? 'Processing…' : `Confirm — Settle ₱${financials.balanceDue}`}
+          </Button>
         </DialogActions>
       </Dialog>
 

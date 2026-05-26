@@ -295,21 +295,33 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   };
 
   const pushToCartArray = (newItem) => {
-    const existingIndex = cart.findIndex(c => c.id === newItem.id && !c.isExternalRx);
-    if (existingIndex >= 0) {
-      updateCartQty(existingIndex, 1);
-      return;
-    }
+    // Atomic add-or-bump against the LATEST cart (prev) — never the render-time
+    // closure. Mixing a stale read here with a functional append previously let
+    // rapid adds duplicate a line or drop a qty bump.
+    setCart(prev => {
+      const existingIndex = prev.findIndex(c => c.id === newItem.id && !c.isExternalRx);
+      if (existingIndex >= 0) {
+        const existing = prev[existingIndex];
+        const newQty = existing.qty + 1;
+        if (existing.type === 'product') {
+          const invItem = inventoryList.find(i => i.id === existing.id);
+          if (invItem && newQty > invItem.stock) {
+            showToast(`Only ${invItem.stock} in stock!`);
+            return prev;
+          }
+        }
+        return prev.map((it, i) => (i === existingIndex ? { ...it, qty: newQty } : it));
+      }
 
-    // C2: POS Audit Trail — tag cashier-added (non-prescribed) items with provenance
-    const taggedItem = newItem.isPrescribed ? newItem : {
-      ...newItem,
-      addedBy: 'cashier',
-      addedByName: profile?.fullName || 'POS Cashier',
-      addedAt: new Date().toISOString(),
-    };
-
-    setCart(prev => [...prev, taggedItem]);
+      // C2: POS Audit Trail — tag cashier-added (non-prescribed) items with provenance
+      const taggedItem = newItem.isPrescribed ? newItem : {
+        ...newItem,
+        addedBy: 'cashier',
+        addedByName: profile?.fullName || 'POS Cashier',
+        addedAt: new Date().toISOString(),
+      };
+      return [...prev, taggedItem];
+    });
   };
 
   const handleExternalRxApprove = () => {
@@ -319,15 +331,22 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
   };
   
   const updateCartQty = (index, delta) => {
-    const newCart = [...cart];
-    const newQty = newCart[index].qty + delta;
-    if (newQty < 1) return; 
-    if (newCart[index].type === 'product') {
-        const invItem = inventoryList.find(i => i.id === newCart[index].id);
-        if (invItem && newQty > invItem.stock) return showToast(`Only ${invItem.stock} in stock!`);
-    }
-    newCart[index].qty = newQty;
-    setCart(newCart);
+    // Functional updater + immutable map() — reads the latest cart (prev) and
+    // never mutates an existing item object in place.
+    setCart(prev => {
+      const target = prev[index];
+      if (!target) return prev;
+      const newQty = target.qty + delta;
+      if (newQty < 1) return prev;
+      if (target.type === 'product') {
+        const invItem = inventoryList.find(i => i.id === target.id);
+        if (invItem && newQty > invItem.stock) {
+          showToast(`Only ${invItem.stock} in stock!`);
+          return prev;
+        }
+      }
+      return prev.map((it, i) => (i === index ? { ...it, qty: newQty } : it));
+    });
   };
 
   const removeFromCart = (index) => {

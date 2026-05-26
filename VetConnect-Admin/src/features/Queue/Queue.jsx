@@ -360,7 +360,8 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
       // TIER 2: THE FINAL PULSE CHECK (ZOMBIE PREVENTION - IDs verified in real-time)
       const freshSnap = await getDocs(query(collection(db, "appointments"), where("__name__", "in", leftoverPatients.map(p => p.id))));
       const freshStatuses = {};
-      freshSnap.docs.forEach(doc => { freshStatuses[doc.id] = doc.data().status; });
+      const freshSignedOff = {};
+      freshSnap.docs.forEach(doc => { freshStatuses[doc.id] = doc.data().status; freshSignedOff[doc.id] = doc.data().signedOffAt; });
 
       const queueSnap = await getDoc(doc(db, "queue", "daily_queue"));
       if (queueSnap.exists() && queueSnap.data().lastResetDate === todayStr && !isSilent && !isForcedCleanup) {
@@ -369,8 +370,25 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
          return;
       }
 
-      const batch = writeBatch(db); 
-      
+      const batch = writeBatch(db);
+
+      // T4.241: a signed-off patient (committed encounterItems + held stock reservations) must be
+      // billed before any carry-over/confine — the clone strips encounterItems and leaks stock.
+      // The EOD card disables these toggles for signed-off patients; this is the defensive backstop —
+      // abort the whole close-out with a clear message if one is somehow queued for carry-over/confine.
+      const blockedSignOff = leftoverPatients.filter((p) => {
+        // Read signedOffAt from the FRESH snapshot (leftoverPatients can be stale across devices),
+        // falling back to the in-memory value — this is the authoritative backstop.
+        if (!(freshSignedOff[p.id] || p.signedOffAt)) return false;
+        const act = patientResolutions[p.id] || (p.status === 'pending' ? 'defer' : 'cancel');
+        return ['carryover', 'carry-over', 'hospitalize', 'confined'].includes(act);
+      });
+      if (blockedSignOff.length > 0) {
+        const names = blockedSignOff.map((p) => p.petName || 'patient').join(', ');
+        if (!isSilent) showToast(`Settle the sale for ${names} in the Queue before carrying over or confining — these records are signed off with unbilled charges.`, "error");
+        return;
+      }
+
       // PHASE 5.6.20: DYNAMIC SHIFT BOUNDARIES (Universal Precision)
       const [openH, openM = 0] = (clinicSettings.openingTime || "08:00").split(':').map(Number);
       const [closeH, closeM = 0] = (clinicSettings.closingTime || "17:00").split(':').map(Number);
@@ -1124,6 +1142,12 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
         if (!freshSnap.exists()) throw new Error("Appointment not found.");
         const freshData = freshSnap.data();
         const freshStatus = (freshData.status || '').toLowerCase();
+
+        // T4.241: block inline carry-over/confine of a signed-off patient — the clone strips
+        // encounterItems and leaks stock reservations. The sale must be settled first.
+        if (freshData.signedOffAt) {
+          throw new Error("This patient is signed off with unbilled charges. Complete the sale in the POS before carrying over or confining.");
+        }
 
         if (TERMINAL_STATUSES.has(freshStatus)) {
           throw new Error(`Record already resolved (status: ${freshStatus}). Cannot carry over.`);

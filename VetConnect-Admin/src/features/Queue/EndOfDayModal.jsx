@@ -285,6 +285,9 @@ const AuditPatientCard = React.memo(({
 
     const rawStatus = (patient.status || 'unknown').toLowerCase();
     const isHighStakes = HIGH_STAKES_STATUSES.has(rawStatus);
+    // T4.241: a signed-off patient (committed encounterItems + held stock reservations) must be
+    // billed before carry-over/confine — the clone strips encounterItems and leaks reservations.
+    const isSignedOff = !!patient.signedOffAt;
     const isPhysical = ['arrived', 'in-consult', 'dispensing', 'billing'].includes(rawStatus);
     const forensicColor = tabMode === 1 ? '#E65100' : (tabMode === 2 ? '#D32F2F' : '#5D4037');
     const clinicalBorder = '#000000'; // SOLID BLACK FORENSIC ARCHITECTURE
@@ -872,12 +875,18 @@ const AuditPatientCard = React.memo(({
 
                         {/* 🏥 ACTIVE SILO BINARY TRIAGE */}
                         {tabMode === 2 && [
-                            <ToggleButton key="hospitalize" value="hospitalize"><LocalHospitalIcon sx={{ mr: 0.5, fontSize: 16 }} /> CONFINE</ToggleButton>,
-                            <ToggleButton key="carryover" value="carryover"><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Carry-Over</ToggleButton>
+                            <ToggleButton key="hospitalize" value="hospitalize" disabled={isSignedOff}><LocalHospitalIcon sx={{ mr: 0.5, fontSize: 16 }} /> CONFINE</ToggleButton>,
+                            <ToggleButton key="carryover" value="carryover" disabled={isSignedOff}><EventRepeatIcon sx={{ mr: 0.5, fontSize: 16 }} /> Carry-Over</ToggleButton>
                         ]}
 
                         <ToggleButton value="cancel"><DoNotDisturbIcon sx={{ mr: 0.5, fontSize: 16 }} /> Cancel</ToggleButton>
                     </ToggleButtonGroup>
+
+                    {isSignedOff && tabMode === 2 && (
+                        <Typography sx={{ display: 'block', mt: 1, fontWeight: 1000, color: '#D32F2F', fontSize: '0.62rem', lineHeight: 1.4 }}>
+                            🔒 Signed off with unbilled charges. Settle this patient's sale in the Queue (POS) before closing — billing it clears the record from this list automatically.
+                        </Typography>
+                    )}
 
                     {/* UNIVERSAL REASON FOR EVERY RESOLUTION */}
                     {resolution && (

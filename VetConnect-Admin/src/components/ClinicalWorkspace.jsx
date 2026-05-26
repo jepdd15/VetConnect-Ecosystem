@@ -792,6 +792,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
   const [lockedServices, setLockedServices] = useState(new Set());
   const [signOffConfirm, setSignOffConfirm] = useState(null);
+  // T4.244: misclick guard — 2-step confirm before "Lock Clinical Record" arms sign-off.
+  const [showLockConfirm, setShowLockConfirm] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [allergenConfirm, setAllergenConfirm] = useState(null);
 
@@ -5270,7 +5272,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                         <Stack spacing={2}>
                             {/* Staff-initiated record lock — two-step commit guard.
                                 Clicking this arms the sign-off button; the vet confirms by clicking Sign & Send. */}
-                            <Button variant="outlined" fullWidth size="large" onClick={() => setOwnerSignature(`consent_witnessed_${Date.now()}`)} startIcon={<HistoryEduIcon />} sx={{ fontWeight: 1000, borderRadius: 3, py: 1.5 }}>{ownerSignature ? "RECORD LOCKED ✅" : "LOCK CLINICAL RECORD"}</Button>
+                            <Button variant="outlined" fullWidth size="large" onClick={() => { if (!ownerSignature) setShowLockConfirm(true); }} startIcon={<HistoryEduIcon />} sx={{ fontWeight: 1000, borderRadius: 3, py: 1.5 }}>{ownerSignature ? "RECORD LOCKED ✅" : "LOCK CLINICAL RECORD"}</Button>
                             <Button variant="contained" fullWidth size="large" onClick={handleSaveConsult} disabled={loading || !ownerSignature} sx={{ fontWeight: 1000, borderRadius: 3, py: 2, bgcolor: COLORS.brand, textTransform: 'uppercase' }}>{loading ? "PROCESSING..." : saveBtnText}</Button>
                         </Stack>
                     ) : (
@@ -5588,6 +5590,76 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         petId={patient?.petId}
         appointmentId={patient?.id}
       />
+
+      {/* T4.244: 2-step misclick guard before locking the clinical record / arming sign-off. */}
+      <Dialog
+        open={showLockConfirm}
+        onClose={() => setShowLockConfirm(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 0,
+            border: `2px solid ${COLORS.accent}`,
+            boxShadow: `8px 8px 0px ${COLORS.accent}`,
+          },
+        }}
+      >
+        <DialogTitle sx={{
+          bgcolor: COLORS.cream,
+          color: COLORS.brand,
+          fontWeight: 900,
+          fontFamily: FONT,
+          fontSize: '1rem',
+          textTransform: 'uppercase',
+          letterSpacing: 1,
+          borderBottom: `2px solid ${COLORS.accent}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+        }}>
+          <HistoryEduIcon sx={{ color: COLORS.accent }} />
+          Lock Clinical Record?
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5, pb: 2, bgcolor: COLORS.formBg }}>
+          <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: COLORS.brand }}>
+            Lock this clinical record to prepare it for sign-off? Double-check the details before continuing.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, bgcolor: COLORS.cream, borderTop: `2px solid ${COLORS.accent}` }}>
+          <Button
+            onClick={() => setShowLockConfirm(false)}
+            sx={{
+              fontWeight: 900,
+              color: COLORS.accent,
+              border: `2px solid ${COLORS.accent}`,
+              borderRadius: 0,
+              fontFamily: FONT,
+              px: 2.5,
+              fontSize: '0.75rem',
+              '&:hover': { bgcolor: 'rgba(93, 64, 55, 0.05)' },
+            }}
+          >
+            CANCEL
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => { setOwnerSignature(`consent_witnessed_${Date.now()}`); setShowLockConfirm(false); }}
+            sx={{
+              fontWeight: 900,
+              borderRadius: 0,
+              fontFamily: FONT,
+              px: 2.5,
+              fontSize: '0.75rem',
+              bgcolor: COLORS.brand,
+              boxShadow: `4px 4px 0px ${COLORS.accent}`,
+              '&:hover': { bgcolor: COLORS.brand, boxShadow: `2px 2px 0px ${COLORS.accent}` },
+            }}
+          >
+            LOCK RECORD
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={Boolean(signOffConfirm)}

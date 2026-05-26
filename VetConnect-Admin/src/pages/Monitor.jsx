@@ -12,6 +12,13 @@ import { useClinicSettings } from '../hooks/useClinicSettings';
 
 const AVG_CONSULT_MINUTES = 15;
 
+// Display caps (T4.240 D7) — prevent silent clipping under high volume.
+const ACTIVE_CAP   = 6; // NOW SERVING patient cards
+const UP_NEXT_CAP  = 5; // arrived patients shown as cards
+const EXPECTED_CAP = 6; // upcoming confirmed appointments shown
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 const getDeptColor = (serviceCategory, departments) => {
   if (!serviceCategory || !departments.length) return COLORS.textMuted;
   const match = departments.find(
@@ -20,8 +27,13 @@ const getDeptColor = (serviceCategory, departments) => {
   return match?.color || COLORS.textMuted;
 };
 
-const formatTicket = (prefix, number) =>
-  `${prefix ? `${prefix}-` : ''}${String(number).padStart(3, '0')}`;
+const formatTicket = (prefix, number) => {
+  // Confirmed/carried-over/re-routed appointments have no issued ticket yet
+  // (queueNumber/ticketPrefix are null until check-in or staff assignment).
+  // Guard against String(null) → "null" / String(undefined) → "undefined".
+  if (number === null || number === undefined) return '—';
+  return `${prefix ? `${prefix}-` : ''}${String(number).padStart(3, '0')}`;
+};
 
 const deriveTicketType = (ticketPrefix, ownerId) => {
   if (ticketPrefix === 'E') return 'EMERGENCY';
@@ -37,6 +49,41 @@ const getStartOfToday = () => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return Timestamp.fromDate(d);
+};
+
+const getEndOfTodayDate = () => {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d;
+};
+
+// Local (device = Manila) YYYY-MM-DD, matching how closedDates are stored/compared elsewhere.
+const getLocalDateStr = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+// Total scheduled minutes for an appointment (T4.240 D4).
+// Sums each stored service's duration; per-service fallback 15 min; single-service fallback to appt-level fields.
+const apptDurationMins = (appt) => {
+  if (Array.isArray(appt.services) && appt.services.length) {
+    return appt.services.reduce((sum, s) => sum + (Number(s.duration) || AVG_CONSULT_MINUTES), 0);
+  }
+  return Number(appt.serviceDuration || appt.duration) || AVG_CONSULT_MINUTES;
+};
+
+const fmtHour12 = (h) => {
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hr = h % 12 === 0 ? 12 : h % 12;
+  return `${hr}:00 ${period}`;
+};
+
+// "~ now" / "~35 min" — round wait up to the nearest 5 min (T4.240 D4).
+const waitLabel = (mins) => {
+  if (mins <= 0) return '~ now';
+  return `~${Math.ceil(mins / 5) * 5} min`;
 };
 
 export default function Monitor() {
@@ -89,6 +136,8 @@ export default function Monitor() {
       q,
       snap => {
         const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // 'confined' (hospitalized) is intentionally excluded — admitted patients are not
+        // part of the lobby waiting flow and should not appear on the public board.
         const activeStatuses = new Set(['in-consult', 'dispensing', 'billing', 'on-hold']);
 
         const active = all.filter(a => activeStatuses.has(a.status));
@@ -105,9 +154,17 @@ export default function Monitor() {
           byDept[dept].sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
         });
 
+        // T4.240 D1b: EXPECTED shows TODAY's upcoming confirmed appointments only.
+        // (Active/arrived stay unbounded so carried-over patients aren't dropped.)
+        const endOfToday = getEndOfTodayDate();
+        const confirmedToday = confirmed.filter(a => {
+          const sd = a.scheduledDate?.toDate?.();
+          return sd && sd <= endOfToday;
+        });
+
         setActiveServing(byDept);
         setArrivedList(arrived.sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0)));
-        setConfirmedList(confirmed.sort((a, b) => {
+        setConfirmedList(confirmedToday.sort((a, b) => {
           const aTime = a.scheduledDate?.toDate?.()?.getTime() || 0;
           const bTime = b.scheduledDate?.toDate?.()?.getTime() || 0;
           return aTime - bTime;
@@ -141,18 +198,74 @@ export default function Monitor() {
     );
   }
 
-  const isQueuePaused = queueData.status === 'paused';
-  const isQueueIdle   = Object.keys(activeServing).length === 0;
-  const isServing     = !isQueuePaused && !isQueueIdle;
+  // ── Derive operational state (T4.240) ────────────────────────────────────
+  // Flatten active patients (tag dept) and apply the display cap.
+  const activeFlat = Object.entries(activeServing).flatMap(
+    ([dept, appts]) => appts.map(a => ({ ...a, _dept: dept }))
+  );
+  const activeShown = activeFlat.slice(0, ACTIVE_CAP);
+  const activeOverflow = activeFlat.length - activeShown.length;
+  const shownByDept = {};
+  activeShown.forEach(a => {
+    if (!shownByDept[a._dept]) shownByDept[a._dept] = [];
+    shownByDept[a._dept].push(a);
+  });
 
-  const currentHour   = currentTime.getHours();
-  const openHour      = clinicSettings.openHour  ?? 8;
-  const closeHour     = clinicSettings.closeHour ?? 17;
-  const isAfterHours  = currentHour >= closeHour || currentHour < openHour;
+  const hasActive    = activeFlat.length > 0;
+  const hasArrived   = arrivedList.length > 0;
+  const hasConfirmed = confirmedList.length > 0;
+  const hasOperational = hasActive || hasArrived || hasConfirmed;
+
+  // D4: remaining time of the current consult (in-consult patients only — dispensing/
+  // billing have finished their consult; on-hold is paused — none block the next call-up).
+  const inConsult = activeFlat.filter(a => a.status === 'in-consult');
+  const remainingMins = (appt) => {
+    const dur = apptDurationMins(appt);
+    const started = appt.timeStarted?.toDate?.();
+    if (!started) return dur;
+    const elapsed = (currentTime.getTime() - started.getTime()) / 60000;
+    return Math.max(0, dur - elapsed);
+  };
+  const currentConsultRemaining = inConsult.length
+    ? Math.min(...inConsult.map(remainingMins))
+    : 0;
+
+  // D4: sequential wait per arrived patient = remaining current consult + sum of durations ahead.
+  let waitCursor = currentConsultRemaining;
+  const arrivedWaits = arrivedList.map((appt) => {
+    const w = waitCursor;
+    waitCursor += apptDurationMins(appt);
+    return w;
+  });
+
+  // D5 closed-day + D3 after-hours guard.
+  const workingDays = clinicSettings.workingDays || [0, 1, 2, 3, 4, 5, 6];
+  const closedDates = clinicSettings.closedDates || [];
+  const todayStr    = getLocalDateStr(currentTime);
+  const isClosedToday = !workingDays.includes(currentTime.getDay()) || closedDates.includes(todayStr);
+
+  const currentHour = currentTime.getHours();
+  const openHour    = clinicSettings.openHour  ?? 8;
+  const closeHour   = clinicSettings.closeHour ?? 17;
+  const isAfterHours = currentHour >= closeHour || currentHour < openHour;
+
+  // D3: never show a "closed" screen while patients are still being served / waiting.
+  const showClosedScreen = (isClosedToday || isAfterHours) && !hasActive && !hasArrived;
+
+  // Next time the clinic opens, for the closed-screen subtitle.
+  const findNextOpenLabel = () => {
+    if (!isClosedToday && currentHour < openHour) return 'today';
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(currentTime);
+      d.setDate(d.getDate() + i);
+      if (workingDays.includes(d.getDay()) && !closedDates.includes(getLocalDateStr(d))) {
+        return i === 1 ? 'tomorrow' : DAY_NAMES[d.getDay()];
+      }
+    }
+    return 'soon';
+  };
 
   const formattedTime = currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-
-  const activeDepts = Object.keys(activeServing);
 
   return (
     <Box sx={{
@@ -170,7 +283,7 @@ export default function Monitor() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <PetsIcon sx={{ fontSize: 52, color: COLORS.amber }} />
           <Typography sx={{ color: 'white', fontWeight: 900, fontSize: '2.8rem', letterSpacing: 3, textTransform: 'uppercase', fontFamily: FONT }}>
-            {isQueuePaused ? 'QUEUE PAUSED' : isServing ? 'NOW SERVING' : 'WELCOME'}
+            {hasActive ? 'NOW SERVING' : 'WELCOME'}
           </Typography>
         </Box>
 
@@ -182,7 +295,7 @@ export default function Monitor() {
         </Box>
       </Box>
 
-      {isAfterHours ? (
+      {showClosedScreen ? (
         <Box sx={{
           flex: 1,
           display: 'flex',
@@ -193,20 +306,20 @@ export default function Monitor() {
         }}>
           <PetsIcon sx={{ fontSize: 100, color: COLORS.textMuted }} />
           <Typography sx={{ color: 'white', fontSize: '3rem', fontWeight: 900, textAlign: 'center', fontFamily: FONT }}>
-            Clinic closed.
+            {isClosedToday ? 'Closed today' : 'Clinic closed.'}
           </Typography>
           <Typography sx={{ color: COLORS.textMuted, fontSize: '2rem', fontFamily: FONT }}>
-            Opens tomorrow at {openHour}:00 AM
+            {isClosedToday ? "We're open again" : 'Opens'} {findNextOpenLabel()} at {fmtHour12(openHour)}
           </Typography>
         </Box>
       ) : (
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-          {isServing ? (
+          {hasActive && (
             <>
-              <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 3 }}>
-                {activeDepts.map(dept => {
-                  const appts = activeServing[dept];
+              <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: activeOverflow > 0 ? 1.5 : 3 }}>
+                {Object.keys(shownByDept).map(dept => {
+                  const appts = shownByDept[dept];
                   const deptColor = getDeptColor(dept, departments);
                   return (
                     <Paper
@@ -266,7 +379,7 @@ export default function Monitor() {
                               </Typography>
                               <Chip
                                 label={ticketType}
-                                icon={isEmergency ? <CampaignIcon /> : <PetsIcon />}
+                                icon={isEmergency ? <CampaignIcon /> : undefined}
                                 sx={{
                                   bgcolor: isEmergency ? COLORS.danger : COLORS.accent,
                                   color: 'white',
@@ -321,58 +434,70 @@ export default function Monitor() {
                 })}
               </Box>
 
-              {arrivedList.length > 0 && (
+              {activeOverflow > 0 && (
+                <Typography sx={{ color: COLORS.textMuted, fontWeight: 800, fontSize: '1rem', mb: 3, fontFamily: FONT }}>
+                  + {activeOverflow} more in progress
+                </Typography>
+              )}
+            </>
+          )}
+
+          {hasOperational ? (
+            <>
+              {hasArrived && (
                 <Box sx={{ mb: 2 }}>
                   <Typography sx={{ color: COLORS.textMuted, fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 2, mb: 1.5, fontFamily: FONT }}>
                     UP NEXT
                   </Typography>
-                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                    {arrivedList.slice(0, 5).map((appt, idx) => {
-                      const waitMinutes = (idx + 1) * AVG_CONSULT_MINUTES;
-                      return (
-                        <Paper
-                          key={appt.id}
-                          sx={{
-                            bgcolor: COLORS.cardBg,
-                            border: `2px solid ${getDeptColor(appt.serviceCategory, departments)}`,
-                            borderRadius: 0,
-                            boxShadow: `3px 3px 0px ${COLORS.brand}`,
-                            px: 2.5,
-                            py: 1.5,
-                            minWidth: 150,
-                            opacity: 1 - idx * 0.12,
-                          }}
-                        >
-                          <Typography sx={{ color: COLORS.textMuted, fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, fontFamily: FONT }}>
-                            {idx === 0 ? 'NEXT' : `#${idx + 2}`}
-                          </Typography>
-                          <Typography sx={{ color: COLORS.ctaHover, fontWeight: 900, fontSize: '2rem', fontFamily: FONT }}>
-                            {formatTicket(appt.ticketPrefix, appt.queueNumber)}
-                          </Typography>
-                          <Typography sx={{ color: COLORS.textMuted, fontSize: '0.8rem', fontFamily: FONT }}>
-                            ~{waitMinutes} min
-                          </Typography>
-                        </Paper>
-                      );
-                    })}
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {arrivedList.slice(0, UP_NEXT_CAP).map((appt, idx) => (
+                      <Paper
+                        key={appt.id}
+                        sx={{
+                          bgcolor: COLORS.cardBg,
+                          border: `2px solid ${getDeptColor(appt.serviceCategory, departments)}`,
+                          borderRadius: 0,
+                          boxShadow: `3px 3px 0px ${COLORS.brand}`,
+                          px: 2.5,
+                          py: 1.5,
+                          minWidth: 150,
+                          opacity: 1 - idx * 0.12,
+                        }}
+                      >
+                        <Typography sx={{ color: COLORS.textMuted, fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1, fontFamily: FONT }}>
+                          {idx === 0 ? 'NEXT' : `#${idx + 1}`}
+                        </Typography>
+                        <Typography sx={{ color: COLORS.ctaHover, fontWeight: 900, fontSize: '2rem', fontFamily: FONT }}>
+                          {formatTicket(appt.ticketPrefix, appt.queueNumber)}
+                        </Typography>
+                        <Typography sx={{ color: COLORS.textMuted, fontSize: '0.8rem', fontFamily: FONT }}>
+                          {waitLabel(arrivedWaits[idx])}
+                        </Typography>
+                      </Paper>
+                    ))}
+                    {arrivedList.length > UP_NEXT_CAP && (
+                      <Typography sx={{ color: COLORS.textMuted, fontWeight: 800, fontSize: '1rem', fontFamily: FONT }}>
+                        + {arrivedList.length - UP_NEXT_CAP} more waiting
+                      </Typography>
+                    )}
                   </Box>
                 </Box>
               )}
 
-              {confirmedList.length > 0 && (
+              {hasConfirmed && (
                 <Box sx={{ mb: 2 }}>
                   <Typography sx={{ color: COLORS.textMuted, fontWeight: 800, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: 2, mb: 1.5, fontFamily: FONT }}>
                     EXPECTED
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                    {confirmedList.slice(0, 4).map(appt => {
+                    {confirmedList.slice(0, EXPECTED_CAP).map(appt => {
                       const scheduled = appt.scheduledDate?.toDate?.();
                       const timeStr = scheduled
                         ? scheduled.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
                         : null;
                       return (
                         <Typography key={appt.id} sx={{ color: COLORS.textMuted, fontSize: '1rem', fontFamily: FONT }}>
-                          {formatTicket(appt.ticketPrefix, appt.queueNumber)}
+                          {appt.petName || 'Pet'}
                           {timeStr ? ` — ${timeStr}` : ''}
                         </Typography>
                       );
@@ -389,10 +514,10 @@ export default function Monitor() {
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
               <PetsIcon sx={{ fontSize: 120, color: COLORS.textMuted }} />
               <Typography sx={{ fontSize: '2.5rem', fontWeight: 900, color: 'white', fontFamily: FONT }}>
-                {isQueuePaused ? 'Queue is temporarily paused' : 'Waiting for next patient'}
+                Waiting for next patient
               </Typography>
               <Typography sx={{ fontSize: '1.5rem', color: COLORS.textMuted, fontFamily: FONT }}>
-                {isQueuePaused ? 'Service will resume shortly' : 'Please check in at the front desk'}
+                Please check in at the front desk
               </Typography>
             </Box>
           )}
@@ -407,7 +532,7 @@ export default function Monitor() {
           <>
             <Typography sx={{ color: COLORS.textMuted, fontSize: '1.2rem' }}>&bull;</Typography>
             <Typography sx={{ color: COLORS.textMuted, fontSize: '1.2rem', fontFamily: FONT }}>
-              Open until {clinicSettings.closeHour > 12 ? clinicSettings.closeHour - 12 : clinicSettings.closeHour}:00 {clinicSettings.closeHour >= 12 ? 'PM' : 'AM'}
+              Open until {fmtHour12(clinicSettings.closeHour)}
             </Typography>
           </>
         )}

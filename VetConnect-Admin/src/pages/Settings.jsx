@@ -1710,17 +1710,16 @@ export default function Settings() {
                 </Stack>
                 <Box sx={{ px: 1.5 }}>
                   <Slider
-                    value={Math.min(settings.geofenceRadiusM || 500, 2000)}
+                    value={Math.min(settings.geofenceRadiusM || 500, 1000)}
                     onChange={(_, value) => handleChange('geofenceRadiusM', value)}
                     step={null}
                     min={100}
-                    max={2000}
+                    max={1000}
                     marks={[
                       { value: 100, label: '100m' },
                       { value: 250, label: '250m' },
                       { value: 500, label: '500m' },
                       { value: 1000, label: '1km' },
-                      { value: 2000, label: '2km' },
                     ]}
                     sx={{
                       color: COLORS.brand,

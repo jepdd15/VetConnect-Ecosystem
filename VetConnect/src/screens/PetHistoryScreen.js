@@ -2390,84 +2390,11 @@ export default function PetHistoryScreen({ route, navigation }) {
 
             {/* LAB RESULTS — Moved above Discharge Notes (see after Vitals section) */}
 
-            {/* T3.90: Amendments history */}
-            {item.amendments?.length > 0 && (
-              <View style={styles.amendmentCard}>
-                <Text style={styles.amendmentHeader}>AMENDMENTS ({item.amendments.length})</Text>
-                {[...item.amendments]
-                  .sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0))
-                  .map((amend, idx) => {
-                    const ts = amend.timestamp?.toDate
-                      ? amend.timestamp.toDate()
-                      : (amend.timestamp?.seconds ? new Date(amend.timestamp.seconds * 1000) : null);
-                    const metaLine = `${amend.vetName || 'Clinician'}${ts ? ` — ${ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}`;
-
-                    // T3.99: Structured amendment — render mini SOAP card with orange theme
-                    if (amend.type === 'structured') {
-                      return (
-                        <View key={idx} style={styles.amendmentEntry}>
-                          <Text style={styles.amendmentReason}>AMENDMENT: {amend.reason}</Text>
-
-                          {/* SOAP fields — only non-empty ones */}
-                          {[
-                            { key: 'subjective', label: 'S' },
-                            { key: 'objective',  label: 'O' },
-                            { key: 'assessment', label: 'A' },
-                            { key: 'plan',       label: 'P' },
-                          ].filter(({ key }) => amend.soap?.[key]).map(({ key, label }) => (
-                            <View key={key} style={styles.amendSoapRow}>
-                              <Text style={styles.amendSoapLabel}>{label}</Text>
-                              <Text style={styles.amendmentText}>{amend.soap[key]}</Text>
-                            </View>
-                          ))}
-
-                          {/* Vitals row — only if any field is non-empty */}
-                          {amend.vitals && Object.values(amend.vitals).some(v => v) ? (
-                            <View style={styles.amendVitalsRow}>
-                              {[
-                                { label: 'Wt',   val: amend.vitals.weight ? `${amend.vitals.weight} kg` : null },
-                                { label: 'Temp', val: amend.vitals.temp   ? `${amend.vitals.temp} °C`   : null },
-                                { label: 'HR',   val: amend.vitals.hr     ? `${amend.vitals.hr} bpm`    : null },
-                                { label: 'RR',   val: amend.vitals.rr     ? `${amend.vitals.rr} rpm`    : null },
-                                { label: 'CRT',  val: amend.vitals.crt    ? `${amend.vitals.crt}s`      : null },
-                                { label: 'BCS',  val: amend.vitals.bcs    ? `${amend.vitals.bcs}/9`     : null },
-                                { label: 'Pain', val: amend.vitals.pain   ? `${amend.vitals.pain}/10`   : null },
-                              ].filter(e => e.val).map(({ label, val }) => (
-                                <Text key={label} style={styles.amendVitalChip}>{label}: {val}</Text>
-                              ))}
-                            </View>
-                          ) : null}
-
-                          {/* Added medications */}
-                          {amend.addedMedications?.length > 0 ? (
-                            <View style={{ marginTop: 4 }}>
-                              <Text style={styles.amendSoapLabel}>ADDED MEDICATIONS</Text>
-                              {amend.addedMedications.map((med, j) => (
-                                <Text key={j} style={styles.amendmentText}>
-                                  {med.name}{med.qty ? ` x${med.qty}` : ''}{med.instructions ? ` — ${med.instructions}` : ''}
-                                </Text>
-                              ))}
-                            </View>
-                          ) : null}
-
-                          <Text style={styles.amendmentMeta}>{metaLine}</Text>
-                        </View>
-                      );
-                    }
-
-                    // Legacy text blob — unchanged rendering
-                    return (
-                      <View key={idx} style={styles.amendmentEntry}>
-                        {amend.reason ? (
-                          <Text style={styles.amendmentReason}>Reason: {amend.reason}</Text>
-                        ) : null}
-                        <Text style={styles.amendmentText}>{amend.text}</Text>
-                        <Text style={styles.amendmentMeta}>{metaLine}</Text>
-                      </View>
-                    );
-                  })}
-              </View>
-            )}
+            {/* T4.243 Phase 3b: owner-facing amendments trail removed (locked decision).
+                Pet owners see ONLY the clean CURRENT record — no amendment tag, no version
+                history. The body already reflects corrected values (write-time materialize),
+                and corrected vitals flow through resolveVitals. The full audit trail is
+                staff-only (admin AmendmentsTrail / EMRDrawer / internal print). */}
 
             {/* T4.13: Problem list update annotation — shows when this visit
                  triggered problem list changes. Written by proceedWithSave()
@@ -4263,77 +4190,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // T3.90: Amendments history
-  amendmentCard: {
-    marginTop: 12,
-    padding: 14,
-    backgroundColor: COLORS.cream,
-    borderRadius: 0,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.warning,
-  },
-  amendmentHeader: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.warning,
-    letterSpacing: 1.2,
-    marginBottom: 10,
-  },
-  amendmentEntry: {
-    paddingLeft: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.warning,
-    marginBottom: 10,
-    paddingVertical: 6,
-  },
-  amendmentReason: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.warning,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  amendmentText: {
-    fontSize: 14,
-    color: COLORS.textPrimary,
-    lineHeight: 20,
-  },
-  amendmentMeta: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    marginTop: 4,
-  },
-
-  // T3.99: Structured amendment sub-components
-  amendSoapRow: {
-    marginBottom: 4,
-  },
-  amendSoapLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.warning,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  amendVitalsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 6,
-    padding: 8,
-    backgroundColor: COLORS.cream,
-    borderWidth: 1,
-    borderColor: COLORS.warning,
-    borderRadius: 0,
-  },
-  amendVitalChip: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.warning,
-  },
+  // T4.243 Phase 3b: amendment-trail styles removed — owner mobile no longer renders an
+  // amendments history (staff-only). See the removed trail block above.
 
   // T3.96: Year section dividers
   yearHeader: {

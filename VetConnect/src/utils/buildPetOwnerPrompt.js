@@ -12,6 +12,11 @@
  * - Owner is the user — no need to include owner name
  */
 
+// T4.243 Phase 3b: resolve amended vitals so the AI quotes the SAME (corrected) values the
+// owner sees in the UI. For write-time records this returns the body; for legacy-amended
+// records it applies the read-time overlay.
+import { resolveVitals } from './resolveVitals';
+
 /**
  * Calculates a pet's age from a date-of-birth value.
  * Accepts Firestore Timestamps, seconds-epoch objects, Date instances, or strings.
@@ -140,19 +145,21 @@ export function buildPetOwnerPrompt({ pet, records, vaccinations }) {
       if (r.serviceNames?.length > 0) lines.push(`Services: ${r.serviceNames.join(', ')}`);
       if (r.vetName) lines.push(`Veterinarian: ${r.vetName}`);
 
-      // Vitals — weight, temp, HR, RR only (BCS/CRT/pain are clinician-facing)
-      const hasVitals = r.vitals && (
-        r.vitals.weight != null ||
-        r.vitals.temp   != null ||
-        r.vitals.hr     != null ||
-        r.vitals.rr     != null
+      // Vitals — weight, temp, HR, RR only (BCS/CRT/pain are clinician-facing).
+      // resolveVitals() reflects amended values (T4.243).
+      const rv = resolveVitals(r);
+      const hasVitals = (
+        rv.weight != null ||
+        rv.temp   != null ||
+        rv.hr     != null ||
+        rv.rr     != null
       );
       if (hasVitals) {
         const vitalParts = [];
-        if (r.vitals.weight != null && r.vitals.weight !== '') vitalParts.push(`Weight: ${r.vitals.weight} kg`);
-        if (r.vitals.temp   != null && r.vitals.temp   !== '') vitalParts.push(`Temperature: ${r.vitals.temp} °C`);
-        if (r.vitals.hr     != null && r.vitals.hr     !== '') vitalParts.push(`Heart Rate: ${r.vitals.hr} bpm`);
-        if (r.vitals.rr     != null && r.vitals.rr     !== '') vitalParts.push(`Respiratory Rate: ${r.vitals.rr} br/min`);
+        if (rv.weight != null && rv.weight !== '') vitalParts.push(`Weight: ${rv.weight} kg`);
+        if (rv.temp   != null && rv.temp   !== '') vitalParts.push(`Temperature: ${rv.temp} °C`);
+        if (rv.hr     != null && rv.hr     !== '') vitalParts.push(`Heart Rate: ${rv.hr} bpm`);
+        if (rv.rr     != null && rv.rr     !== '') vitalParts.push(`Respiratory Rate: ${rv.rr} br/min`);
         if (vitalParts.length > 0) lines.push(`Vitals: ${vitalParts.join(' | ')}`);
       }
 
@@ -293,15 +300,17 @@ export function buildPetOwnerPrompt({ pet, records, vaccinations }) {
   }
 
   // ── Weight trend (last 10 readings, newest first) ─────────────────────────
+  // Use resolveVitals so amended weights match what the owner sees (T4.243).
   const weightReadings = safeRecords
-    .filter(r => r.vitals?.weight != null && r.vitals.weight !== '')
+    .map(r => ({ r, weight: resolveVitals(r).weight }))
+    .filter(({ weight }) => weight != null && weight !== '')
     .sort((a, b) => {
-      const da = a.date?.toDate ? a.date.toDate() : a.date?.seconds ? new Date(a.date.seconds * 1000) : new Date(0);
-      const db = b.date?.toDate ? b.date.toDate() : b.date?.seconds ? new Date(b.date.seconds * 1000) : new Date(0);
+      const da = a.r.date?.toDate ? a.r.date.toDate() : a.r.date?.seconds ? new Date(a.r.date.seconds * 1000) : new Date(0);
+      const db = b.r.date?.toDate ? b.r.date.toDate() : b.r.date?.seconds ? new Date(b.r.date.seconds * 1000) : new Date(0);
       return db - da;
     })
     .slice(0, 10)
-    .map(r => `${formatDate(r.date)}: ${r.vitals.weight} kg`);
+    .map(({ r, weight }) => `${formatDate(r.date)}: ${weight} kg`);
 
   if (weightReadings.length > 0) {
     lines.push('--- WEIGHT TREND (newest first) ---');

@@ -36,6 +36,7 @@ import {
 import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { FONT, COLORS, TYPE, STATUS_COLORS } from '../theme/designTokens';
+import AmendmentsTrail from './AmendmentsTrail';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import EMRAIConsole from './EMRAIConsole';
 import { useVaccineCatalog } from '../hooks/useVaccineCatalog';
@@ -490,24 +491,9 @@ const RecordCard = ({ record, appointmentId, onPrint, caseDayMap }) => {
             </Box>
           )}
 
-          {/* AMENDMENTS AUDIT */}
-          {record.amendments?.length > 0 && (
-            <Box sx={{ mt: 4, pt: 3, borderTop: `1px dashed ${COLORS.border}` }}>
-              <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.warning, mb: 1.5, textTransform: 'uppercase', letterSpacing: 1.2, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <ShieldIcon sx={{ fontSize: 14 }} /> AMENDMENTS ({record.amendments.length})
-              </Typography>
-              <Stack spacing={1.5}>
-                {record.amendments.map((am, i) => (
-                  <Box key={i} sx={{ pl: 2, borderLeft: `3px solid ${COLORS.warning}`, bgcolor: COLORS.warningSurface, py: 1, px: 1.5 }}>
-                    <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.textPrimary }}>{am.text || am.soap?.subjective || 'Clinical Amendment'}</Typography>
-                    <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', color: COLORS.textMuted, mt: 0.5 }}>
-                      BY: {(am.vetName || am.author || 'CLINICIAN').toUpperCase()} — {formatDate(am.timestamp || am.date)}
-                    </Typography>
-                  </Box>
-                ))}
-              </Stack>
-            </Box>
-          )}
+          {/* T4.243 Phase 3a: shared amendments trail — per-field diff entries, legacy
+              entries, and the frozen original. Self-hides when there are no amendments. */}
+          <AmendmentsTrail amendments={record.amendments} />
         </Box>
       </Collapse>
     </Box>

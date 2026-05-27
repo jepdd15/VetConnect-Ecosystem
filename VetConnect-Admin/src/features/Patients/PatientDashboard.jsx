@@ -103,6 +103,7 @@ import { usePaymentActions } from './hooks/usePaymentActions';
 import ReferralModal from './components/ReferralModal';
 import WalkInModal from '../Queue/WalkInModal';
 import ClinicalWorkspace from '../../components/ClinicalWorkspace';
+import AmendmentsTrail, { AmendedChip } from '../../components/AmendmentsTrail';
 import SendNotificationDialog from '../../components/SendNotificationDialog';
 import PetHistoryAIDrawer from './components/PetHistoryAIDrawer';
 import { resolveDepartmentForRecord } from '../../utils/resolveDepartmentForRecord';
@@ -2100,6 +2101,10 @@ export default function PatientDashboard() {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 'auto' }}>
                       {/* Vitals strip removed for simplicity */}
                       {/* SEALED indicator removed */}
+                      {/* T4.243 Phase 3a: AMENDED chip when the record carries any revision/legacy amendment */}
+                      {(rec.isAmended || rec.amendments?.some(a => a.kind !== 'original')) && (
+                        <AmendedChip />
+                      )}
                       {rec.legal?.isLocked === true && (
                         <Button
                           size="small"
@@ -2528,130 +2533,10 @@ export default function PatientDashboard() {
                               </Box>
                             )}
 
-                      {/* Clinical Amendments (T2.453) */}
-                      {rec.amendments?.length > 0 && (
-                        <Box sx={{ mt: 2, pt: 1.5, borderTop: `1px dashed ${COLORS.borderLight}` }}>
-                          <Typography sx={{
-                            fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 1,
-                            display: 'flex', alignItems: 'center', gap: 0.5
-                          }}>
-                            <ShieldIcon sx={{ fontSize: 13, color: COLORS.warning }} />
-                            AMENDMENTS ({rec.amendments.length})
-                          </Typography>
-                          <Stack spacing={1}>
-                            {[...rec.amendments]
-                              .sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0))
-                              .map((amend, idx) => {
-                                const ts = amend.timestamp?.toDate
-                                  ? amend.timestamp.toDate()
-                                  : (amend.timestamp?.seconds ? new Date(amend.timestamp.seconds * 1000) : null);
-                                const metaLine = `${amend.vetName || 'Clinician'}${ts ? ` — ${ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}`;
-
-                                // T3.99: Structured amendment — render mini SOAP card
-                                if (amend.type === 'structured') {
-                                  return (
-                                    <Box key={idx} sx={{
-                                      pl: 1.5, borderLeft: `3px solid ${COLORS.warning}`,
-                                      bgcolor: COLORS.warningSurface, py: 1, px: 1.5,
-                                    }}>
-                                      <Typography sx={{
-                                        fontFamily: FONT, fontSize: '0.7rem', fontWeight: 700,
-                                        color: COLORS.warning, textTransform: 'uppercase', mb: 0.5,
-                                      }}>
-                                        AMENDMENT: {amend.reason}
-                                      </Typography>
-
-                                      {/* Mini SOAP grid — only non-empty fields */}
-                                      <Stack spacing={0.5}>
-                                        {[
-                                          { key: 'subjective', label: 'S' },
-                                          { key: 'objective',  label: 'O' },
-                                          { key: 'assessment', label: 'A' },
-                                          { key: 'plan',       label: 'P' },
-                                        ].filter(({ key }) => amend.soap?.[key]).map(({ key, label }) => (
-                                          <Box key={key}>
-                                            <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 900, color: COLORS.warning, textTransform: 'uppercase' }}>
-                                              {label}
-                                            </Typography>
-                                            <Typography sx={{ fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary, whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>
-                                              {amend.soap[key]}
-                                            </Typography>
-                                          </Box>
-                                        ))}
-                                      </Stack>
-
-                                      {/* Vitals row — only if present and non-empty */}
-                                      {amend.vitals && Object.values(amend.vitals).some(v => v) && (
-                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 0.75 }}>
-                                          {[
-                                            { label: 'Wt',   val: amend.vitals.weight ? `${amend.vitals.weight} kg` : null },
-                                            { label: 'Temp', val: amend.vitals.temp   ? `${amend.vitals.temp} °C`   : null },
-                                            { label: 'HR',   val: amend.vitals.hr     ? `${amend.vitals.hr} bpm`    : null },
-                                            { label: 'RR',   val: amend.vitals.rr     ? `${amend.vitals.rr} rpm`    : null },
-                                            { label: 'CRT',  val: amend.vitals.crt    ? `${amend.vitals.crt}s`      : null },
-                                            { label: 'BCS',  val: amend.vitals.bcs    ? `${amend.vitals.bcs}/9`     : null },
-                                            { label: 'Pain', val: amend.vitals.pain   ? `${amend.vitals.pain}/4`    : null },
-                                          ].filter(e => e.val).map(({ label, val }) => (
-                                            <Box key={label} sx={{ px: 0.75, py: 0.4, bgcolor: COLORS.warningSurface, border: `1px solid ${COLORS.warning}`, minWidth: 48, textAlign: 'center' }}>
-                                              <Typography sx={{ fontFamily: FONT, fontSize: '0.55rem', fontWeight: 900, color: COLORS.warning, textTransform: 'uppercase' }}>{label}</Typography>
-                                              <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 700, color: COLORS.textPrimary }}>{val}</Typography>
-                                            </Box>
-                                          ))}
-                                        </Box>
-                                      )}
-
-                                      {/* Added medications — if present */}
-                                      {amend.addedMedications?.length > 0 && (
-                                        <Box sx={{ mt: 0.75 }}>
-                                          <Typography sx={{ fontFamily: FONT, fontSize: '0.6rem', fontWeight: 900, color: COLORS.warning, textTransform: 'uppercase', mb: 0.25 }}>
-                                            Added Medications
-                                          </Typography>
-                                          {amend.addedMedications.map((med, i) => (
-                                            <Typography key={i} sx={{ fontFamily: FONT, fontSize: '0.8rem', color: COLORS.textPrimary }}>
-                                              {med.name}{med.qty ? ` x${med.qty}` : ''}{med.instructions ? ` — ${med.instructions}` : ''}
-                                            </Typography>
-                                          ))}
-                                        </Box>
-                                      )}
-
-                                      <Typography sx={{ fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, mt: 0.5 }}>
-                                        {metaLine}
-                                      </Typography>
-                                    </Box>
-                                  );
-                                }
-
-                                // Legacy text blob — unchanged rendering
-                                return (
-                                  <Box key={idx} sx={{
-                                    pl: 1.5, borderLeft: `3px solid ${COLORS.warning}`,
-                                    bgcolor: COLORS.cream, py: 1, px: 1.5,
-                                  }}>
-                                    {amend.reason && (
-                                      <Typography sx={{
-                                        fontFamily: FONT, fontSize: '0.7rem', fontWeight: 700,
-                                        color: COLORS.warning, textTransform: 'uppercase', mb: 0.25
-                                      }}>
-                                        Reason: {amend.reason}
-                                      </Typography>
-                                    )}
-                                    <Typography sx={{
-                                      fontFamily: FONT, ...TYPE.body, color: COLORS.textPrimary,
-                                      whiteSpace: 'pre-wrap'
-                                    }}>
-                                      {amend.text}
-                                    </Typography>
-                                    <Typography sx={{
-                                      fontFamily: FONT, fontSize: '0.7rem', color: COLORS.textMuted, mt: 0.5
-                                    }}>
-                                      {metaLine}
-                                    </Typography>
-                                  </Box>
-                                );
-                              }) }
-                          </Stack>
-                        </Box>
-                      )}
+                      {/* T4.243 Phase 3a: full amendments trail — new per-field diff entries,
+                          legacy AmendmentDialog entries, and the frozen original baseline.
+                          Self-hides when there are no amendments. */}
+                      <AmendmentsTrail amendments={rec.amendments} />
 
 
                       {/* T3.92: Inline vaccination details */}

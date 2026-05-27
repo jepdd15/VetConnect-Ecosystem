@@ -106,6 +106,7 @@ export const COLORS = {
 
   // Warning family
   warningSurface:'#FFF3E0', // Light orange surface — info/warning boxes
+  successSurface:'#E8F5E9', // Light green surface — success/addition chips, sealed-record banner
 };
 
 // ── APPOINTMENT STATUS COLORS ─────────────────────────────────

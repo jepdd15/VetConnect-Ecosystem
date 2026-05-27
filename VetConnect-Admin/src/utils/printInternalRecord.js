@@ -2,6 +2,15 @@ import { UNIFIED_PRINT_STYLES, formatPrintDate, esc, calculatePetAge } from './p
 import { resolveVitals } from './resolveVitals';
 import { resolveObjectiveText } from './examUtils';
 import {
+  classifyAmendments,
+  isNewEntry,
+  amendmentAuthorName,
+  kindChipLabel,
+  entryDate,
+  formatDiffValue,
+  snapshotSummary,
+} from './amendmentDisplay';
+import {
   renderVitalsSection,
   renderPrescriptionsSection,
   renderVaccineSection,
@@ -49,28 +58,80 @@ function renderExamChecklistSection(examChecklist) {
   `;
 }
 
+// T4.243 Phase 3a: audit trail rendered from the shared amendmentDisplay helpers so print
+// matches the on-screen trail. Handles new per-field diff entries, legacy AmendmentDialog
+// entries, and the frozen original baseline.
 function renderAmendmentHistorySection(amendments) {
-  if (!amendments?.length) return '';
-  const rows = amendments.map(a => {
-    const ts = a.timestamp?.toDate
-      ? a.timestamp.toDate().toLocaleString('en-PH')
-      : (a.timestamp ? new Date(a.timestamp).toLocaleString('en-PH') : '—');
-    return `
-      <tr>
-        <td>${esc(a.vetName || a.by || '—')}</td>
-        <td>${esc(ts)}</td>
-        <td><code style="font-size:10px;">${esc(a.field || '—')}</code></td>
-        <td style="color:#666;">${esc(String(a.oldValue ?? '—'))}</td>
-        <td style="font-weight:700;">${esc(String(a.newValue ?? '—'))}</td>
-      </tr>
-    `;
+  const { original, trail, count } = classifyAmendments(amendments);
+  // count excludes the frozen original; a lone original can't occur (baseline is only written
+  // alongside a revision). Hide when there are no trail entries — matches AmendmentsTrail.jsx.
+  if (count === 0) return '';
+
+  const fmt = (d) => (d ? d.toLocaleString('en-PH') : '—');
+
+  const entriesHTML = trail.map((e) => {
+    let body;
+    if (isNewEntry(e)) {
+      const chip = kindChipLabel(e);
+      const rows = (e.diff || []).map((d) => {
+        const action = d.changeType === 'added' ? 'Added' : d.changeType === 'removed' ? 'Removed' : 'Changed';
+        return `
+          <tr>
+            <td style="font-weight:700;">${esc(action)}</td>
+            <td>${esc(d.fieldLabel || '—')}</td>
+            <td style="color:#666;">${d.changeType === 'added' ? '—' : esc(formatDiffValue(d.fieldKey, d.before))}</td>
+            <td style="font-weight:700;">${d.changeType === 'removed' ? '—' : esc(formatDiffValue(d.fieldKey, d.after))}</td>
+          </tr>`;
+      }).join('');
+      const heading = `Amendment ${esc(String(e.revisionNumber ?? ''))} &middot; ${esc(amendmentAuthorName(e))} &middot; ${esc(fmt(entryDate(e)))}${chip ? ` &middot; [${esc(chip)}]` : ''}`;
+      const reason = e.reason ? `<p style="margin:2px 0 4px; font-style:italic; color:#555;">Reason: ${esc(e.reason)}</p>` : '';
+      body = `
+        <div style="font-weight:900; font-size:11px;">${heading}</div>
+        ${reason}
+        <table class="data-table"><thead><tr><th>Change</th><th>Field</th><th>Previous</th><th>Updated</th></tr></thead><tbody>${rows}</tbody></table>`;
+    } else {
+      // legacy AmendmentDialog entry — reason + free-text/SOAP + vitals + added meds (parity with LegacyEntryCard)
+      const soapText = ['subjective', 'objective', 'assessment', 'plan']
+        .filter((k) => e.soap?.[k])
+        .map((k) => `<b>${k[0].toUpperCase()}:</b> ${esc(e.soap[k])}`)
+        .join('<br/>');
+      const vitalsText = e.vitals ? [
+        e.vitals.weight ? `Wt ${esc(String(e.vitals.weight))} kg` : null,
+        e.vitals.temp ? `Temp ${esc(String(e.vitals.temp))} °C` : null,
+        e.vitals.hr ? `HR ${esc(String(e.vitals.hr))} bpm` : null,
+        e.vitals.rr ? `RR ${esc(String(e.vitals.rr))} rpm` : null,
+        e.vitals.crt ? `CRT ${esc(String(e.vitals.crt))}s` : null,
+        e.vitals.bcs ? `BCS ${esc(String(e.vitals.bcs))}/9` : null,
+        e.vitals.pain ? `Pain ${esc(String(e.vitals.pain))}/4` : null,
+      ].filter(Boolean).join(' &middot; ') : '';
+      const medsText = e.addedMedications?.length
+        ? e.addedMedications.map((m) => `${esc(m.name || '')}${m.qty ? ` x${esc(String(m.qty))}` : ''}${m.instructions ? ` — ${esc(m.instructions)}` : ''}`).join('<br/>')
+        : '';
+      const heading = `Amendment &middot; ${esc(amendmentAuthorName(e))} &middot; ${esc(fmt(entryDate(e)))}`;
+      const reason = e.reason ? `<p style="margin:2px 0 4px; font-weight:700; color:#555;">Reason: ${esc(e.reason)}</p>` : '';
+      body = `
+        <div style="font-weight:900; font-size:11px;">${heading}</div>
+        ${reason}
+        ${e.text ? `<p style="margin:2px 0;">${esc(e.text)}</p>` : ''}
+        ${soapText ? `<p style="margin:2px 0;">${soapText}</p>` : ''}
+        ${vitalsText ? `<p style="margin:2px 0; color:#555;"><b>Vitals:</b> ${vitalsText}</p>` : ''}
+        ${medsText ? `<p style="margin:2px 0;"><b>Added Medications:</b><br/>${medsText}</p>` : ''}`;
+    }
+    // border-left uses COLORS.warning (#E65100) — hex literal required in print HTML strings
+    return `<div style="margin-bottom:10px; padding-left:8px; border-left:3px solid #E65100;">${body}</div>`;
   }).join('');
+
+  const originalHTML = original ? (() => {
+    const sum = snapshotSummary(original.snapshot).map((s) => `<b>${esc(s.label)}:</b> ${esc(s.value)}`).join(' &middot; ');
+    return `<div style="margin-top:6px; padding:8px; border:1px dashed #999; color:#666; font-size:11px;">
+      &#128274; Original &middot; signed ${esc(fmt(entryDate(original)))} &middot; ${esc(amendmentAuthorName(original))} &middot; frozen${sum ? `<br/>${sum}` : ''}
+    </div>`;
+  })() : '';
+
   return `
-    <div class="section-anchor">Audit Trail: Amendment History</div>
-    <table class="data-table">
-      <thead><tr><th>Clinician</th><th>Timestamp</th><th>Field</th><th>Previous</th><th>Updated</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div class="section-anchor">Audit Trail: Amendment History (${count})</div>
+    ${entriesHTML}
+    ${originalHTML}
   `;
 }
 

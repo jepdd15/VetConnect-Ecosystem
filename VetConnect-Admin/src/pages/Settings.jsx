@@ -50,7 +50,6 @@ import { invalidateTemplateCache, invalidateChannelSettingsCache } from '../util
 import { testLlmConnection, DEFAULT_CLINICAL_SYSTEM_PROMPT, DEFAULT_CALENDAR_AI_PROMPT } from '../utils/llmService';
 import { useConsentPolicy } from '../hooks/useConsentPolicy';
 import { CONSENT_TYPES } from '../utils/consentConstants';
-import { migrateExistingConsents } from '../utils/consentMigration';
 
 // Design Tokens
 import { FONT, TYPE, COLORS } from '../theme/designTokens';
@@ -229,17 +228,6 @@ export default function Settings() {
   // AI & Chatbot tab — Advanced settings collapse state
   const [advancedClinicalOpen, setAdvancedClinicalOpen] = useState(false);
   const [advancedCalendarOpen, setAdvancedCalendarOpen] = useState(false);
-  const [advancedMigrationOpen, setAdvancedMigrationOpen] = useState(false);
-
-  // Legacy data migration — Step 7.2 (T3.5 Phase 7)
-  const [migrationResult, setMigrationResult] = useState({
-    migrated: 0,
-    skipped: 0,
-    errors: [],
-    loading: false,
-    previewed: false,
-    executed: false,
-  });
 
   useEffect(() => {
     // 1. Fetch Global Settings
@@ -693,59 +681,6 @@ export default function Settings() {
     }
   };
 
-  // --- MIGRATION HANDLERS (Step 7.2, T3.5 Phase 7) ---
-
-  /**
-   * Dry-run the migration to count how many users would be affected.
-   * Does not write any Firestore documents.
-   */
-  const handleMigrationPreview = async () => {
-    setMigrationResult((prev) => ({ ...prev, loading: true }));
-    try {
-      const adminName = profile?.fullName || profile?.email || 'Unknown Admin';
-      const result = await migrateExistingConsents(adminName, { dryRun: true });
-      setMigrationResult({
-        ...result,
-        loading: false,
-        previewed: true,
-        executed: false,
-      });
-    } catch (err) {
-      console.error('[Settings.handleMigrationPreview]:', err.message);
-      setToast({ open: true, message: 'Preview failed: ' + err.message, severity: 'error' });
-      setMigrationResult((prev) => ({ ...prev, loading: false }));
-    }
-  };
-
-  /**
-   * Execute the migration — writes consent_records for all eligible users.
-   * Only enabled after a successful preview that found at least one eligible user.
-   */
-  const handleMigrationExecute = async () => {
-    setMigrationResult((prev) => ({ ...prev, loading: true }));
-    try {
-      const adminName = profile?.fullName || profile?.email || 'Unknown Admin';
-      const result = await migrateExistingConsents(adminName);
-      setMigrationResult({
-        ...result,
-        loading: false,
-        previewed: true,
-        executed: true,
-      });
-      const errorSuffix = result.errors.length > 0
-        ? ` ${result.errors.length} error(s) — check console.`
-        : '';
-      setToast({
-        open: true,
-        message: `Migrated ${result.migrated} clients, skipped ${result.skipped}.${errorSuffix}`,
-        severity: result.errors.length > 0 ? 'warning' : 'success',
-      });
-    } catch (err) {
-      console.error('[Settings.handleMigrationExecute]:', err.message);
-      setToast({ open: true, message: 'Migration failed: ' + err.message, severity: 'error' });
-      setMigrationResult((prev) => ({ ...prev, loading: false }));
-    }
-  };
 
   // --- PILLAR 11: AI CLINICAL REASONING HANDLERS ---
 
@@ -1883,130 +1818,6 @@ export default function Settings() {
                     </Typography>
                   ) : null}
                 </Box>
-              )}
-
-              {/* ONE-TIME SETUP: CARRY OVER OLD CONSENTS — collapsible advanced section */}
-              {consentVersions.length > 0 && (
-              <Box sx={{ mb: 3 }}>
-                <Box
-                  onClick={() => setAdvancedMigrationOpen(o => !o)}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1.5,
-                    px: 2,
-                    py: 1.5,
-                    bgcolor: advancedMigrationOpen ? COLORS.cream : 'white',
-                    border: `2px solid ${COLORS.accent}33`,
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    '&:hover': { bgcolor: COLORS.cream },
-                  }}
-                >
-                  <Typography sx={{ ...TYPE.label, color: COLORS.accent, fontSize: '0.8rem' }}>
-                    One-Time Setup: Carry Over Old Consents
-                  </Typography>
-                  <Typography sx={{ ...TYPE.meta, color: COLORS.textMuted, fontSize: '0.72rem' }}>
-                    Only needed once when first setting up consent policies
-                  </Typography>
-                  <Box sx={{ ml: 'auto', color: COLORS.textSecondary, display: 'flex', alignItems: 'center' }}>
-                    {advancedMigrationOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                  </Box>
-                </Box>
-
-                {advancedMigrationOpen && (
-                <Box sx={{ p: 2.5, border: `2px solid ${COLORS.accent}33`, borderTop: 'none', bgcolor: COLORS.cardBg }}>
-
-                  <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mb: 2 }}>
-                    Pet owners who agreed to the old terms before the versioning system existed need their consent attached to the current version. Run this once when you first set up consent policies. Preview first to see who's affected — nothing changes until you tap "Run".
-                  </Typography>
-
-                  {/* Preview result */}
-                  {migrationResult.previewed && !migrationResult.executed && (
-                    <Box sx={{ mb: 2, p: 1.5, bgcolor: COLORS.warningSurface, border: `1px solid ${COLORS.border}` }}>
-                      <Typography sx={{ ...TYPE.bodyBold, color: COLORS.textPrimary }}>
-                        Found {migrationResult.migrated} client(s) eligible for migration
-                        {migrationResult.skipped > 0 && ` (${migrationResult.skipped} already migrated or ineligible)`}
-                      </Typography>
-                      {migrationResult.errors.length > 0 && (
-                        <Typography sx={{ ...TYPE.meta, color: COLORS.danger, mt: 0.5 }}>
-                          {migrationResult.errors.length} error(s) encountered during preview — check console.
-                        </Typography>
-                      )}
-                    </Box>
-                  )}
-
-                  {/* Post-execution result */}
-                  {migrationResult.executed && (
-                    <Box sx={{ mb: 2, p: 1.5, bgcolor: COLORS.kpiGreenBg, border: `1px solid ${COLORS.kpiGreenBorder}` }}>
-                      <Typography sx={{ ...TYPE.bodyBold, color: COLORS.success }}>
-                        Migration complete — migrated {migrationResult.migrated}, skipped {migrationResult.skipped}.
-                        {migrationResult.errors.length > 0 && ` ${migrationResult.errors.length} error(s) — check console.`}
-                      </Typography>
-                    </Box>
-                  )}
-
-                  <Stack direction="row" spacing={1.5}>
-                    {/* Preview button */}
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={
-                        migrationResult.loading && !migrationResult.previewed
-                          ? <CircularProgress size={14} sx={{ color: COLORS.accent }} />
-                          : <RefreshIcon fontSize="small" />
-                      }
-                      onClick={handleMigrationPreview}
-                      disabled={migrationResult.loading || migrationResult.executed}
-                      sx={{
-                        fontFamily: FONT,
-                        fontWeight: 700,
-                        fontSize: '0.8rem',
-                        textTransform: 'none',
-                        borderRadius: 0,
-                        borderColor: COLORS.border,
-                        color: COLORS.textSecondary,
-                        '&:hover': { borderColor: COLORS.accent, color: COLORS.accent },
-                        '&.Mui-disabled': { opacity: 0.5 },
-                      }}
-                    >
-                      {migrationResult.loading && !migrationResult.previewed ? 'Previewing...' : 'Preview'}
-                    </Button>
-
-                    {/* Execute button */}
-                    <Button
-                      variant="contained"
-                      size="small"
-                      startIcon={
-                        migrationResult.loading && migrationResult.previewed
-                          ? <CircularProgress size={14} sx={{ color: COLORS.cardBg }} />
-                          : null
-                      }
-                      onClick={handleMigrationExecute}
-                      disabled={
-                        !migrationResult.previewed ||
-                        migrationResult.migrated === 0 ||
-                        migrationResult.loading ||
-                        migrationResult.executed
-                      }
-                      sx={{
-                        fontFamily: FONT,
-                        fontWeight: 900,
-                        fontSize: '0.8rem',
-                        textTransform: 'none',
-                        borderRadius: 0,
-                        bgcolor: COLORS.accent,
-                        boxShadow: 'none',
-                        '&:hover': { bgcolor: COLORS.brand, boxShadow: 'none' },
-                        '&.Mui-disabled': { bgcolor: COLORS.borderLight, boxShadow: 'none' },
-                      }}
-                    >
-                      {migrationResult.loading && migrationResult.previewed ? 'Migrating...' : 'Run Migration'}
-                    </Button>
-                  </Stack>
-                </Box>
-                )}
-              </Box>
               )}
 
               {/* CREATE NEW DRAFT BUTTON */}

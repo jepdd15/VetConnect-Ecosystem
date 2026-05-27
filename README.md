@@ -21,7 +21,7 @@ VetConnect-Capstone/
 |-------|-----------|
 | Mobile App | React Native 0.81, Expo SDK 54, React 19, JavaScript |
 | Admin Dashboard | React 19, Vite 7, Material UI 7, JavaScript |
-| Database | Firebase Cloud Firestore (22 collections) |
+| Database | Firebase Cloud Firestore (25 collections) |
 | Authentication | Firebase Authentication (email/password) |
 | Hosting | Firebase Hosting (admin dashboard) |
 | Backend Services | Cloudflare Worker (AI proxy, push/email/SMS, cron reminders) |
@@ -29,14 +29,14 @@ VetConnect-Capstone/
 | Push Notifications | Expo Push API |
 | Email | Resend API |
 | SMS | Semaphore API (Philippine gateway) |
-| Testing | Vitest (322 unit tests) |
+| Testing | Vitest (388 unit tests) |
 
 ## Prerequisites
 
 - Node.js 20+
 - npm 9+
 - Firebase CLI (`npm install -g firebase-tools`)
-- Expo CLI (`npm install -g expo-cli`) — for mobile development
+- EAS CLI (`npm install -g eas-cli`) — for mobile builds (the project uses the local Expo CLI via `npx expo`, so no global Expo install is needed)
 - Android Studio or Xcode — for mobile emulator/simulator
 - A Firebase project on the Spark (free) plan
 
@@ -58,7 +58,7 @@ npx expo start
 ```
 
 - Press `a` for Android emulator, `i` for iOS simulator, or `w` for web preview
-- For a production APK: `eas build --platform android`
+- For a production APK: `eas build --platform android --profile preview`
 
 ### 3. Admin Dashboard (VetConnect-Admin/)
 
@@ -108,8 +108,8 @@ npm run serve  # Local emulator only
 | `npm run build` | Production build |
 | `npm run preview` | Preview production build |
 | `npm run lint` | ESLint |
-| `npm test` | Run 322 unit tests (Vitest) |
-| `npm run deploy` | Deploy to Firebase Hosting |
+| `npm test` | Run 388 unit tests (Vitest) |
+| `firebase deploy --only hosting` | Deploy admin to Firebase Hosting (run after `npm run build`) |
 
 ## Firebase Configuration
 
@@ -153,7 +153,7 @@ The Cloudflare Worker requires these environment variables (set in Cloudflare Da
 
 ## Firestore Collections
 
-22 root collections + 2 sub-collections:
+25 root collections (plus sub-collections as noted):
 
 `users`, `pets` (sub: `problems`), `appointments`, `medical_records`, `sales`, `services`, `inventory`, `clinic_settings` (sub-docs: `general`, `llm_config`), `queue`, `slot_reservations`, `vaccine_reminder_queue`, `appointment_reminder_queue`, `balance_reminder_queue`, `vaccine_preferences`, `notification_log`, `notification_templates`, `promo_templates`, `consent_versions`, `system_prompts`, `llm_audit_logs`, `daily_closings`, `counters`, `expense_categories`, `departments`, `inventory_categories`
 
@@ -164,7 +164,7 @@ cd VetConnect-Admin
 npm test
 ```
 
-322 unit tests across 2 test suites covering the clinical pulse engine (50 tests) and pulse event writers (256 tests + 16 draft save/resume tests).
+388 unit tests across 6 suites covering the clinical pulse engine, pulse event writers (incl. draft save/resume), record amendments, amendment trail display, payment utilities, and vitals resolution.
 
 ## Team
 

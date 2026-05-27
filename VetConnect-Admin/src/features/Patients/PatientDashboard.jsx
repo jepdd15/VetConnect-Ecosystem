@@ -2030,7 +2030,7 @@ export default function PatientDashboard() {
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: COLORS.textMuted, py: 10 }}>
                 <SearchIcon sx={{ fontSize: 52, mb: 2, opacity: 0.2 }} />
                 <Typography sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.95rem', color: COLORS.textSecondary }}>No Matching Records</Typography>
-                <Button size="small" sx={{ mt: 1.5, fontFamily: FONT, fontWeight: 700, fontSize: '0.72rem', textTransform: 'none', color: COLORS.accent }} onClick={() => { setTimelineSearch(''); setTimelineFilter('All'); }}>Clear Filters</Button>
+                <Button size="small" sx={{ mt: 1.5, fontFamily: FONT, fontWeight: 700, fontSize: '0.72rem', textTransform: 'none', color: COLORS.accent }} onClick={handleClearAllFilters}>Clear Filters</Button>
               </Box>
             ) : processedHistory.map((rec, index) => {
               const isExpanded = expandedRecords.has(index);

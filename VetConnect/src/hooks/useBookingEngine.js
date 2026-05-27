@@ -404,7 +404,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [dayAppointments, dayReservations, selectedServices, selectedPet, clinicSettings, departmentCapacity]);
+  }, [date, dayAppointments, dayReservations, selectedServices, selectedPet, clinicSettings, departmentCapacity]);
 
   return {
     pets,

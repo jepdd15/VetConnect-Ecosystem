@@ -54,6 +54,7 @@ import { uploadAttachment } from '../utils/uploadAttachment';
 import { useInventory } from '../features/Inventory/hooks/useInventory';
 import { calculatePulseMetrics, makePulseEventId, createPulseEvent } from '../utils/pulseUtils';
 import { createDefaultExam, examToText, hasExamData } from '../utils/examUtils';
+import { buildAmendmentUpdate } from '../utils/recordAmendments';
 import { useClinicSettings } from '../hooks/useClinicSettings';
 import { useUser } from '../context/UserContext';
 import { chatWithHistory, buildUserMessage, DEFAULT_CLINICAL_SYSTEM_PROMPT } from '../utils/llmService';
@@ -454,7 +455,104 @@ export const DiagnosticBridge = React.memo(function DiagnosticBridge({
 
 const CUSTOM_TEST_SENTINEL = { id: '__custom__', name: '+ Add Custom Test', category: '__action__' };
 
-export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments, vetsList }) {
+// T4.243 Phase 2: stable no-op so the stock hooks can be neutralized in Revision Mode without
+// creating a new identity each render (avoids spurious effect re-runs).
+const NOOP_STOCK = () => Promise.resolve();
+
+// Firestore Timestamp | ISO string | null → 'YYYY-MM-DD' (for date inputs), else ''.
+const recordTsToDateInput = (v) => {
+  let d = null;
+  if (v && typeof v.toDate === 'function') d = v.toDate();
+  else if (typeof v === 'string' && v) d = new Date(v);
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * T4.243 Phase 2 — inverse of the sign-off forward-map. Reconstructs the editable workspace
+ * state from a SIGNED medical_records doc, for Revision Mode.
+ * Lossy ONLY for the structured physical exam (hydrated as objective TEXT, not the clickable
+ * checklist — accepted by design; content is preserved and editable). Unmatched dispensed
+ * products/services degrade to their stored name/price (no crash).
+ */
+export function hydrateRecordToWorkspace(record, servicesList = [], inventoryList = []) {
+  const rec = record || {};
+  const soap = rec.soap || {};
+  const vitals = rec.vitals || {};
+
+  const soapData = {
+    subjective: soap.subjective || '',
+    objWeight: vitals.weight ?? '',
+    objTemp: vitals.temp ?? '',
+    objHR: vitals.hr ?? '',
+    objRR: vitals.rr ?? '',
+    objCRT: vitals.crt ?? '',
+    bcs: vitals.bcs ?? '',
+    painScale: vitals.pain ?? '',
+    objectiveNotes: soap.objectiveNotes || soap.objective || '',
+    objectiveExam: createDefaultExam(), // structured exam not reconstructed — objective kept as text
+    diagnoses: Array.isArray(rec.diagnoses) ? rec.diagnoses : [],
+    assessmentNotes: soap.assessment || rec.assessmentNotes || '',
+    prognosis: soap.prognosis || null,
+    patientStatus: rec.patientStatus || null,
+    plan: soap.plan || rec.treatment || '',
+    clientInstructions: soap.clientInstructions || '',
+    recheckIn: soap.recheckIn || '1 Week',
+    nextVisit: recordTsToDateInput(rec.nextVisit),
+  };
+
+  const labResults = (Array.isArray(rec.labResults) ? rec.labResults : []).map((l) => ({
+    testName: l.testName || '', result: l.result || '', status: l.status || 'normal',
+    notes: l.notes || '', unit: l.unit || '', referenceRange: l.referenceRange ?? null,
+    catalogTestId: l.catalogTestId ?? null, resultType: l.resultType || 'descriptive',
+    attachmentUrl: l.attachmentUrl ?? null,
+  }));
+
+  const vaccineAdministrations = (Array.isArray(rec.vaccineAdministrations) && rec.vaccineAdministrations.length)
+    ? rec.vaccineAdministrations.map((v) => ({ ...v, dueDate: recordTsToDateInput(v.dueDate) }))
+    : [{ ...EMPTY_VAX }];
+
+  const treatmentCart = [];
+  // Base services (from serviceNames) — shown for context; NOT amendment-tracked.
+  (rec.serviceNames || []).forEach((name) => {
+    const svcDef = servicesList.find((s) => s.name === name);
+    treatmentCart.push({
+      type: 'service', id: svcDef?.id || `svc_${name}`, name,
+      price: svcDef?.price || 0, qty: 1, isDrug: false, productClass: 'retail', isBase: true,
+      isDiscountable: svcDef?.isScPwdEligible !== false,
+      department: svcDef?.department || svcDef?.category || 'General',
+      category: '', sourceServiceId: null, sourceServiceName: null,
+    });
+  });
+  // Dispensed products — amendment-tracked. Match inventory for id/category; degrade if unmatched.
+  (rec.dispensedProducts || []).forEach((p) => {
+    const inv = inventoryList.find((i) => i.itemName === p.name);
+    treatmentCart.push({
+      type: 'product', id: inv?.id || `rx_${p.name}`, name: p.name,
+      price: p.price ?? inv?.price ?? 0, qty: p.qty ?? 1,
+      isDrug: !!p.isDrug, productClass: p.productClass || (p.isDrug ? 'medicine' : 'retail'),
+      isBase: false, instructions: p.instructions || '', sig: p.sig || null,
+      category: (inv?.category || '').toLowerCase(),
+      noStockDeduction: p.noStockDeduction || false,
+      sourceServiceId: null, sourceServiceName: null,
+    });
+  });
+
+  // medical_records stores serviceAttribution/serviceProgress as ARRAYS; convert to the
+  // component's keyed-object shape.
+  const serviceAttribution = {};
+  (rec.serviceAttribution || []).forEach((a) => {
+    if (a.serviceId) serviceAttribution[a.serviceId] = { staffId: a.staffId, staffName: a.staffName };
+  });
+  const serviceProgress = {};
+  (rec.serviceProgress || []).forEach((sp) => {
+    if (sp.serviceId) serviceProgress[sp.serviceId] = sp.status;
+  });
+
+  return { soapData, labResults, vaccineAdministrations, treatmentCart, serviceAttribution, serviceProgress };
+}
+
+export default function ClinicalWorkspace({ open, onClose, patient, inventoryList, servicesList, departments, vetsList, revisionMode = false, revisionRecord = null }) {
   console.log("[ClinicalWorkspace] Mounting/Updating:", { open, patientId: patient?.id, status: patient?.status, caseDay: patient?.caseDay });
   const clinicSettings = useClinicSettings();
   const vaccineCatalog = useVaccineCatalog();
@@ -468,7 +566,11 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [draftBannerState, setDraftBannerState] = useState(null);
   // Controls the discard confirmation dialog visibility.
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
-  const { reserveStock, releaseStock } = useInventory();
+  const { reserveStock: _reserveStock, releaseStock: _releaseStock } = useInventory();
+  // T4.243 Phase 2: in Revision Mode the cart edits the clinical record only — never live
+  // inventory. No-op the stock hooks so all reserve/release call sites become inert at once.
+  const reserveStock = revisionMode ? NOOP_STOCK : _reserveStock;
+  const releaseStock = revisionMode ? NOOP_STOCK : _releaseStock;
   
   const [history, setHistory] = useState([]);
   const [nextAppointment, setNextAppointment] = useState(null);
@@ -794,6 +896,8 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   const [signOffConfirm, setSignOffConfirm] = useState(null);
   // T4.244: misclick guard — 2-step confirm before "Lock Clinical Record" arms sign-off.
   const [showLockConfirm, setShowLockConfirm] = useState(false);
+  // T4.243 Phase 2: required justification for a Revision-Mode save.
+  const [revisionReason, setRevisionReason] = useState('');
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [allergenConfirm, setAllergenConfirm] = useState(null);
 
@@ -821,6 +925,25 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
           setLlmFollowUpInput('');
           setLlmError('');
           setIsAIDrawerOpen(false);
+
+          // T4.243 Phase 2: Revision Mode — hydrate the editable form from the SIGNED record
+          // (inverse map) and KEEP it editable (do NOT lock). Bypasses the normal appointment/
+          // draft seeding, auto-bundle, and stock reservation entirely (stock hooks are no-ops here).
+          if (revisionMode && revisionRecord) {
+            setLockedServices(new Set());
+            setDraftBannerState(null);
+            setSoapAttachments([]);
+            setSavedAttachments(revisionRecord.attachments || []);
+            const h = hydrateRecordToWorkspace(revisionRecord, servicesList, inventoryList);
+            setSoapData(h.soapData);
+            setLabResults(h.labResults);
+            setVaccineAdministrations(h.vaccineAdministrations);
+            setTreatmentCart(h.treatmentCart);
+            setServiceAttribution(h.serviceAttribution);
+            setServiceProgress(h.serviceProgress);
+            setOwnerSignature(null);
+            return;
+          }
 
           // Sign-off guard: check if a medical record already exists for this appointment.
           // The 'medical' key in lockedServices prevents duplicate sign-off.
@@ -2199,6 +2322,104 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
       },
       _proceedFn: proceedFn,
     });
+  };
+
+  // T4.243 Phase 2: Revision-Mode save. Forward-maps the edited workspace state → record-shaped
+  // clinical body (COMPLETE snapshot, mirroring sign-off), then writes via the write-time engine
+  // (archive prior version → diff → materialize body → append trail entry). Does NOT run the
+  // sign-off batch: no new record, no status advance, no stock deduction. Billing is untouched.
+  const handleSaveRevision = async () => {
+    if (isSavingRef.current) return;
+    if (!revisionMode || !revisionRecord) return;
+    if (!revisionReason.trim()) return showToast('A reason is required to save a correction.', 'error');
+
+    isSavingRef.current = true;
+    setLoading(true);
+    try {
+      const vetUid = cwProfile?.uid || auth.currentUser?.uid || 'system';
+      const vetName = cwProfile?.fullName || auth.currentUser?.displayName || 'Authorized Clinician';
+      const now = Timestamp.now();
+
+      const objectiveText = hasExamData(soapData.objectiveExam) ? examToText(soapData.objectiveExam) : (soapData.objectiveNotes || '');
+      const meds = treatmentCart.filter((i) => i.type === 'product');
+
+      // COMPLETE clinical body (buildAmendmentUpdate's contract: full snapshot, not a delta).
+      const newBodyFields = {
+        diagnosis: (soapData.diagnoses || [])[0]?.name || 'Clinical Visit',
+        diagnoses: (soapData.diagnoses || []).filter((d) => d.name).map((d) => ({
+          name: d.name, catalogId: d.catalogId || null, category: d.category || '',
+          severity: d.severity || null, notes: d.notes || '',
+        })),
+        assessmentNotes: soapData.assessmentNotes || '',
+        treatment: soapData.plan,
+        soap: {
+          subjective: soapData.subjective,
+          objective: objectiveText,
+          objectiveNotes: objectiveText,
+          assessment: soapData.assessmentNotes || '',
+          prognosis: soapData.prognosis,
+          plan: soapData.plan,
+          clientInstructions: soapData.clientInstructions || '',
+          recheckIn: soapData.recheckIn,
+        },
+        vitals: {
+          weight: soapData.objWeight, temp: soapData.objTemp, hr: soapData.objHR,
+          rr: soapData.objRR, crt: soapData.objCRT, bcs: soapData.bcs, pain: soapData.painScale,
+        },
+        patientStatus: soapData.patientStatus,
+        nextVisit: soapData.nextVisit
+          ? (() => { const [y, m, d] = soapData.nextVisit.split('-').map(Number); return Timestamp.fromDate(new Date(y, m - 1, d, 8, 0, 0, 0)); })()
+          : null,
+        dispensedProducts: meds.map((item) => ({
+          name: item.name, qty: item.qty, instructions: item.instructions || '',
+          sig: item.sig || null, price: item.price,
+          isDrug: !!item.isDrug, productClass: item.productClass || (item.isDrug ? 'medicine' : 'retail'),
+        })),
+        labResults: (labResults || []).filter((l) => l.testName).map((l) => ({
+          testName: l.testName, result: l.result, status: l.status, notes: l.notes || '',
+          unit: l.unit || '', referenceRange: l.referenceRange || null,
+          catalogTestId: l.catalogTestId || null, resultType: l.resultType || 'descriptive',
+          attachmentUrl: l.attachmentUrl || null,
+        })),
+        vaccineAdministrations: (vaccineAdministrations || []).filter((v) => v.vaccineName).map((v) => ({
+          ...v,
+          dueDate: v.dueDate ? Timestamp.fromDate(new Date(v.dueDate + 'T00:00:00')) : null,
+        })),
+        // Derived client-copy — regenerated so it stays consistent (not amendment-tracked).
+        dischargeSummary: {
+          ...(revisionRecord.dischargeSummary || {}),
+          diagnosis: (soapData.diagnoses || [])[0]?.name || 'Clinical Visit',
+          instructions: soapData.clientInstructions || '',
+          medications: meds
+            .filter((i) => (i.productClass || (i.isDrug ? 'medicine' : 'retail')) === 'medicine')
+            .map((i) => ({ name: i.name, qty: i.qty, instructions: i.instructions || 'Use as directed' })),
+          nextVisit: soapData.nextVisit || null,
+          recheckIn: soapData.recheckIn || null,
+        },
+      };
+
+      const { update } = buildAmendmentUpdate(revisionRecord, newBodyFields, {
+        reason: revisionReason,
+        author: { uid: vetUid, name: vetName },
+        now,
+      });
+
+      if (!update) {
+        showToast('No changes to save.', 'info');
+        return; // isSavingRef / loading reset by the finally block
+      }
+
+      await updateDoc(doc(db, 'medical_records', revisionRecord.id), update);
+      showToast('Correction saved.', 'success');
+      setRevisionReason('');
+      if (onClose) onClose();
+    } catch (error) {
+      console.error('[ClinicalWorkspace.handleSaveRevision]:', error.message);
+      showToast('Failed to save correction: ' + error.message, 'error');
+    } finally {
+      isSavingRef.current = false;
+      setLoading(false);
+    }
   };
 
   const handleSaveConsult = async () => {
@@ -5268,7 +5489,24 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
 
           {/* Pinned bottom: sign-off / sealed section */}
           <Box sx={{ flexShrink: 0, p: 3, pt: 2, borderTop: `1px solid ${COLORS.borderLight}`, borderRadius: 0 }}>
-                    {!isRecordLocked && !lockedServices.has('medical') ? (
+                    {revisionMode ? (
+                        <Stack spacing={1.5}>
+                            {/* T4.243 Phase 2: Revision Mode save — banner + required reason + commit. */}
+                            <Box sx={{ p: 1.5, border: `2px solid ${COLORS.warning}`, bgcolor: COLORS.warningSurface, borderRadius: 0 }}>
+                                <Typography sx={{ fontWeight: 1000, color: COLORS.warning, fontSize: '0.8rem', letterSpacing: 0.5 }}>🟠 REVISION MODE</Typography>
+                                <Typography sx={{ fontSize: '0.72rem', color: '#5D4037', mt: 0.5 }}>
+                                    The original signed record is kept and locked. Your changes are saved as a tracked correction.
+                                </Typography>
+                            </Box>
+                            <TextField
+                                fullWidth multiline rows={2} size="small"
+                                label="Reason for this revision (required)"
+                                value={revisionReason}
+                                onChange={(e) => setRevisionReason(e.target.value)}
+                            />
+                            <Button variant="contained" fullWidth size="large" onClick={handleSaveRevision} disabled={loading || !revisionReason.trim()} sx={{ fontWeight: 1000, borderRadius: 0, py: 2, bgcolor: COLORS.brand, textTransform: 'uppercase' }}>{loading ? "SAVING…" : "SAVE CORRECTION"}</Button>
+                        </Stack>
+                    ) : !isRecordLocked && !lockedServices.has('medical') ? (
                         <Stack spacing={2}>
                             {/* Staff-initiated record lock — two-step commit guard.
                                 Clicking this arms the sign-off button; the vet confirms by clicking Sign & Send. */}

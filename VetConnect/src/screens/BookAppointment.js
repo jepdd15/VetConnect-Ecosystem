@@ -51,7 +51,7 @@ WHAT YOU MUST DO:
 - Recommend when to schedule based on vaccine due dates, follow-up dates, and slot availability
 - Explain what each service involves in simple, friendly language
 - Suggest optimal timing based on the clinic's available slots
-- TRUST THE PROVIDED DATA: The "CLINIC INFO" and "AVAILABLE SLOTS" are the ground truth. If the clinic opens at 1:00 AM or has a 2-hour notice buffer, treat these as intentional business rules, not system errors.
+- TRUST THE PROVIDED DATA: The "CLINIC INFO" and "AVAILABLE SLOTS" are the ground truth. If the clinic opens at 1:00 AM, treat these as intentional business rules, not system errors.
 
 WHAT YOU MUST NOT DO:
 - Never diagnose medical conditions or prescribe medications
@@ -465,9 +465,6 @@ export default function BookAppointment({ navigation, route }) {
           }
           if (clinicSettings.lunchEnabled) {
             lines.push(`Lunch Break (No Bookings): ${fmt(clinicSettings.lunchStart || 12)} - ${fmt(clinicSettings.lunchEnd || 13)}`);
-          }
-          if (clinicSettings.advanceNoticeMins) {
-            lines.push(`Advance Notice Required: ${clinicSettings.advanceNoticeMins} minutes before slot`);
           }
         }
 
@@ -1546,16 +1543,12 @@ export default function BookAppointment({ navigation, route }) {
                 <Text style={styles.legendText}>Available</Text>
             </View>
             <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: COLORS.warning }]} />
-                <Text style={styles.legendText}>Too Soon</Text>
-            </View>
-            <View style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor: COLORS.danger }]} />
-                <Text style={styles.legendText}>Taken</Text>
+                <Text style={styles.legendText}>Fully Booked</Text>
             </View>
             <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: COLORS.textMuted }]} />
-                <Text style={styles.legendText}>Closed</Text>
+                <View style={[styles.legendDot, { backgroundColor: COLORS.muted }]} />
+                <Text style={styles.legendText}>Unavailable</Text>
             </View>
         </View>
 
@@ -1615,15 +1608,20 @@ export default function BookAppointment({ navigation, route }) {
                     >
                       {slot.display}
                     </Text>
-                    {!isAvailable && (
-                      <Text style={styles.slotSubText}>
-                        {slot.status === "TOO_SOON"
-                          ? "TOO SOON"
-                          : slot.status === "OVERFLOW"
-                            ? "UNAVAILABLE"
-                            : "TAKEN"}
+                    {slot.status === "OVERFLOW" ? (
+                      <Text style={[styles.slotSubText, { color: COLORS.muted }]}>
+                        UNAVAILABLE
                       </Text>
-                    )}
+                    ) : slot.capacity > 0 ? (
+                      <Text
+                        style={[
+                          styles.slotSubText,
+                          { color: isSelected ? COLORS.white : isAvailable ? COLORS.textMuted : COLORS.danger },
+                        ]}
+                      >
+                        {slot.booked}/{slot.capacity} booked
+                      </Text>
+                    ) : null}
                   </TouchableOpacity>
                 );
               })}
@@ -1662,15 +1660,20 @@ export default function BookAppointment({ navigation, route }) {
                     >
                       {slot.display}
                     </Text>
-                    {!isAvailable && (
-                      <Text style={styles.slotSubText}>
-                        {slot.status === "TOO_SOON"
-                          ? "TOO SOON"
-                          : slot.status === "OVERFLOW"
-                            ? "UNAVAILABLE"
-                            : "TAKEN"}
+                    {slot.status === "OVERFLOW" ? (
+                      <Text style={[styles.slotSubText, { color: COLORS.muted }]}>
+                        UNAVAILABLE
                       </Text>
-                    )}
+                    ) : slot.capacity > 0 ? (
+                      <Text
+                        style={[
+                          styles.slotSubText,
+                          { color: isSelected ? COLORS.white : isAvailable ? COLORS.textMuted : COLORS.danger },
+                        ]}
+                      >
+                        {slot.booked}/{slot.capacity} booked
+                      </Text>
+                    ) : null}
                   </TouchableOpacity>
                 );
               })}
@@ -2307,7 +2310,9 @@ const styles = StyleSheet.create({
   },
   slotAvailable: { backgroundColor: COLORS.white, borderColor: COLORS.borderLight },
   slotSelected: { backgroundColor: COLORS.success, borderColor: COLORS.success },
-  slotDisabled: { backgroundColor: COLORS.white, borderColor: COLORS.borderLight },
+  // Disabled (Fully Booked / Unavailable) — gray fill so they read as "off" vs the white
+  // selectable tiles; the sub-label color (red count vs gray UNAVAILABLE) tells them apart.
+  slotDisabled: { backgroundColor: '#EFEAE6', borderColor: COLORS.borderLight },
   slotText: { fontWeight: "800", fontSize: 14 },
   slotTextAvailable: { color: COLORS.brand },
   slotTextSelected: { color: COLORS.white },

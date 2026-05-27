@@ -21,7 +21,6 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
   const [clinicSettings, setClinicSettings] = useState({
     openHour: 8,
     closeHour: 17,
-    advanceNoticeMins: 120,
     minSlotInterval: 30,
     lunchEnabled: true,
     lunchStart: 12,
@@ -308,7 +307,6 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
         const manilaDateStr = new Intl.DateTimeFormat('en-ZA', { timeZone: 'Asia/Manila' }).format(new Date()).replace(/\//g, '-');
         const manilaTimeStr = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
         const now = new Date(`${manilaDateStr}T${manilaTimeStr}+08:00`);
-        const advanceNoticeTime = new Date(now.getTime() + (clinicSettings.advanceNoticeMins || 0) * 60000);
         const slotInterval = clinicSettings.minSlotInterval || 30;
         const openH = clinicSettings.openHour || 8;
         const closeH = clinicSettings.closeHour || 17;
@@ -323,18 +321,21 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
             const slotStart = new Date(date);
             slotStart.setHours(h, m, 0, 0);
             let slotStatus = "AVAILABLE";
+            // Capacity counts for the bottleneck (most-utilized) department this booking
+            // touches — surfaced on the tile as "X/Y booked". Stays 0 when no capacity check
+            // ran (e.g. the slot failed an hours/lunch check first); such tiles show no count.
+            let bookedCount = 0;
+            let totalCapacity = 0;
 
             if (slotStart < now) {
               continue;
-            } else if (slotStart < advanceNoticeTime) {
-              slotStatus = "TOO_SOON";
             } else {
               let canFitAll = true;
-              let conflictType = "TAKEN";
+              let conflictType = "FULL";
 
               const petEndTime = new Date(slotStart.getTime() + parallelDuration * 60000);
 
-              // FAILURE 1: BOUNDARIES
+              // FAILURE 1: BOUNDARIES (service would run past closing)
               if (slotStart.getHours() >= closeH || petEndTime > new Date(date).setHours(closeH, 0, 0, 0)) {
                 canFitAll = false; conflictType = "OVERFLOW";
               }
@@ -348,8 +349,10 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
                 canFitAll = false; conflictType = "OVERFLOW";
               }
 
-              // FAILURE 3: DEPARTMENT CAPACITY
+              // FAILURE 3: DEPARTMENT CAPACITY — also captures the most-constrained
+              // department's booked/capacity for the live "X/Y booked" tile count.
               if (canFitAll) {
+                let bottleneckRemaining = Infinity;
                 for (const [deptName, deptDuration] of Object.entries(deptGroups)) {
                   const svcStart = slotStart;
                   const svcEnd = new Date(slotStart.getTime() + deptDuration * 60000);
@@ -359,8 +362,23 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
                     if (svcStart < r.end && svcEnd > r.start) overlaps++;
                   }
                   const capacity = departmentCapacity[deptName] || 0;
-                  if (capacity === 0 || overlaps >= capacity) {
-                    canFitAll = false; conflictType = "TAKEN"; break;
+
+                  // No staff assigned to this department — structurally unbookable. A
+                  // "0/0 booked" count is meaningless, so render it as Unavailable.
+                  if (capacity === 0) {
+                    canFitAll = false; conflictType = "OVERFLOW"; break;
+                  }
+
+                  // Surface the tightest department (fewest spots remaining).
+                  const remaining = capacity - overlaps;
+                  if (remaining < bottleneckRemaining) {
+                    bottleneckRemaining = remaining;
+                    bookedCount = Math.min(overlaps, capacity); // never display X > Y
+                    totalCapacity = capacity;
+                  }
+
+                  if (overlaps >= capacity) {
+                    canFitAll = false; conflictType = "FULL"; break;
                   }
                 }
               }
@@ -372,6 +390,8 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
               timeValue: `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`,
               display: slotStart.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
               status: slotStatus,
+              booked: bookedCount,
+              capacity: totalCapacity,
             });
           }
         }

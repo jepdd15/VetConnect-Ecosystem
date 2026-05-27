@@ -105,7 +105,7 @@ export default function Settings() {
     clinicAddress: '',
     openHour: 8, closeHour: 17,
     lunchEnabled: true, lunchStart: 12, lunchEnd: 13,
-    minSlotInterval: 30, advanceNoticeMins: 120, maxFutureBookingDays: 30,
+    minSlotInterval: 30, maxFutureBookingDays: 30,
     clinicPhone: '',
     clinicEmail: '',
     clinicTIN: '',
@@ -260,7 +260,6 @@ export default function Settings() {
         setLastSavedSettings(prev => prev === null ? {
           ...data,
           minSlotInterval: parseInt(data.minSlotInterval) || 30,
-          advanceNoticeMins: isNaN(parseInt(data.advanceNoticeMins)) ? 120 : parseInt(data.advanceNoticeMins),
           maxFutureBookingDays: parseInt(data.maxFutureBookingDays) || 30,
         } : prev);
       }
@@ -337,7 +336,7 @@ export default function Settings() {
   const hasUnsavedChanges = React.useMemo(() => {
     if (!lastSavedSettings) return false;
     const tracked = ['openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
-      'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays',
+      'minSlotInterval', 'maxFutureBookingDays',
       'workingDays', 'clinicPhone', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
       'clinicLat', 'clinicLng', 'geofenceRadiusM'];
     return tracked.some(key => JSON.stringify(settings[key]) !== JSON.stringify(lastSavedSettings[key]));
@@ -403,10 +402,6 @@ export default function Settings() {
     if (!slot || slot <= 0) {
       return "Base Slot Interval must be greater than 0.";
     }
-    const notice = parseInt(settings.advanceNoticeMins);
-    if (isNaN(notice) || notice < 0) {
-      return "Advance Notice Buffer cannot be negative.";
-    }
     const futureDays = parseInt(settings.maxFutureBookingDays);
     if (!futureDays || futureDays < 1) {
       return "Future Booking Limit must be at least 1 day.";
@@ -439,7 +434,6 @@ export default function Settings() {
       const sanitizedSettings = {
         ...settings,
         minSlotInterval: parseInt(settings.minSlotInterval) || 30,
-        advanceNoticeMins: isNaN(parseInt(settings.advanceNoticeMins)) ? 120 : parseInt(settings.advanceNoticeMins),
         maxFutureBookingDays: parseInt(settings.maxFutureBookingDays) || 30,
       };
       
@@ -459,7 +453,7 @@ export default function Settings() {
       // Field-level diff for audit trail
       if (lastSavedSettings) {
         const tracked = ['clinicName', 'clinicAddress', 'openHour', 'closeHour', 'lunchEnabled', 'lunchStart', 'lunchEnd',
-          'minSlotInterval', 'advanceNoticeMins', 'maxFutureBookingDays',
+          'minSlotInterval', 'maxFutureBookingDays',
           'workingDays', 'clinicPhone', 'clinicEmail', 'clinicTIN', 'baiRegistrationNumber', 'dashboardAlerts', 'dashboardGoals',
           'clinicLat', 'clinicLng', 'geofenceRadiusM', 'enableAppointmentReminders',
           'enableVaccineReminders', 'vaccineReminderWindowDays', 'vaccineReminderCooldownDays',
@@ -1332,7 +1326,7 @@ export default function Settings() {
             <EventBusyIcon /> Booking Rules
           </Typography>
           <Typography sx={{ ...TYPE.meta, color: COLORS.textSecondary, mt: 0.5 }}>
-            Protects the clinic from last-minute bookings.
+            Sets appointment slot spacing and how far ahead pet owners can book.
           </Typography>
         </Box>
         <Box sx={{ p: 3, bgcolor: COLORS.cardBg }}>
@@ -1345,18 +1339,6 @@ export default function Settings() {
                       <MenuItem value={30}>30 Minutes</MenuItem>
                       <MenuItem value={45}>45 Minutes</MenuItem>
                       <MenuItem value={60}>60 Minutes</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <FormControl fullWidth size="medium" sx={{ bgcolor: 'white' }}>
-                    <InputLabel sx={{ fontWeight: 900 }}>Advance Notice Buffer</InputLabel>
-                    <Select value={settings.advanceNoticeMins} label="Advance Notice Buffer" onChange={(e) => handleChange('advanceNoticeMins', e.target.value)} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderRadius: 0, border: `2px solid ${COLORS.accent}33` }, fontWeight: 900 }}>
-                      <MenuItem value={0}>0 Mins (Allow immediate walk-ins)</MenuItem>
-                      <MenuItem value={30}>30 Minutes</MenuItem>
-                      <MenuItem value={60}>1 Hour</MenuItem>
-                      <MenuItem value={120}>2 Hours</MenuItem>
-                      <MenuItem value={1440}>24 Hours (Next-day only)</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>

@@ -10,16 +10,13 @@ import {
   Close as CloseIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
-  PictureAsPdf as PictureAsPdfIcon,
   Search as SearchIcon,
   Print as PrintIcon,
   Science as ScienceIcon,
   Shield as ShieldIcon,
   Vaccines as VaccinesIcon,
-  AttachFile as AttachFileIcon,
   FilterList as FilterListIcon,
   FilterListOff as FilterListOffIcon,
-  Pets as PetsIcon,
   Person as PersonIcon,
   Today as TodayIcon,
   CalendarMonth as CalendarIcon,
@@ -456,38 +453,6 @@ const RecordCard = ({ record, appointmentId, onPrint, caseDayMap }) => {
                   <Typography sx={{ fontFamily: FONT, fontSize: '0.65rem', fontWeight: 900, color: COLORS.textMuted, letterSpacing: 1.5 }}>ATTENDING VETERINARIAN</Typography>
                 </Box>
               </Stack>
-            </Box>
-          )}
-
-          {/* ATTACHMENTS (1:1 Parity) */}
-          {record.attachments?.length > 0 && (
-            <Box sx={{ mt: 4, pt: 2, display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-              <Typography sx={{ fontFamily: FONT, fontSize: '0.72rem', fontWeight: 800, color: COLORS.textMuted, mb: 0.5, width: '100%', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <AttachFileIcon sx={{ fontSize: 13 }} />
-                ATTACHMENTS ({record.attachments.length})
-              </Typography>
-              {record.attachments.map((file, i) => {
-                const isImage = file.mimeType?.startsWith('image/');
-                return (
-                  <Box
-                    key={i}
-                    component="a"
-                    href={file.url || file}
-                    target="_blank"
-                    sx={{
-                      display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75,
-                      bgcolor: COLORS.panelBg, border: `1px solid ${COLORS.border}`,
-                      textDecoration: 'none', cursor: 'pointer',
-                      '&:hover': { bgcolor: COLORS.borderLight },
-                    }}
-                  >
-                    {isImage ? <PetsIcon sx={{ fontSize: 16, color: COLORS.brand }} /> : <PictureAsPdfIcon sx={{ fontSize: 16, color: COLORS.danger }} />}
-                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: COLORS.brand }}>
-                      {file.label || file.fileName || `FILE_${i + 1}`}
-                    </Typography>
-                  </Box>
-                );
-              })}
             </Box>
           )}
 

@@ -50,8 +50,6 @@ import PrintIcon from '@mui/icons-material/Print';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import ShieldIcon from '@mui/icons-material/Shield';
 import ScienceIcon from '@mui/icons-material/Science';
-import AttachFileIcon from '@mui/icons-material/AttachFile';
-import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import BlockIcon from '@mui/icons-material/Block';
 import UndoIcon from '@mui/icons-material/Undo';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
@@ -2470,69 +2468,6 @@ export default function PatientDashboard() {
                         </Box>
                       )}
 
-                      {/* ATTACHMENTS FOOTER */}
-                      {rec.attachments?.length > 0 && (
-                        <Box sx={{ mt: 4, pt: 2, display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-
-                                <Typography sx={{ fontFamily: FONT, ...TYPE.label, color: COLORS.textMuted, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                  <AttachFileIcon sx={{ fontSize: 13 }} />
-                                  Attachments ({rec.attachments.length})
-                                </Typography>
-                                <Stack spacing={0.75}>
-                                  {rec.attachments.map((file, i) => {
-                                    const isImage = file.mimeType?.startsWith('image/');
-                                    const typeColors = {
-                                      'lab-report':     { bg: COLORS.kpiBlueBg,   color: COLORS.medical },
-                                      'clinical-photo': { bg: COLORS.kpiGreenBg,  color: COLORS.success },
-                                      'referral':       { bg: COLORS.kpiPurpleBg, color: COLORS.kpiPurpleText },
-                                      'other':          { bg: COLORS.kpiOrangeBg, color: COLORS.warning },
-                                    };
-                                    const tc = typeColors[file.type] || typeColors['other'];
-                                    return (
-                                      <Box
-                                        key={i}
-                                        component="a"
-                                        href={file.url || file}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        sx={{
-                                          display: 'flex', alignItems: 'center', gap: 1, p: 0.75,
-                                          bgcolor: COLORS.formBg, border: `1px solid ${COLORS.borderLight}`,
-                                          textDecoration: 'none', cursor: 'pointer',
-                                          '&:hover': { bgcolor: COLORS.borderLight },
-                                        }}
-                                      >
-                                        {isImage ? (
-                                          <Box component="img" src={file.url} sx={{ width: 36, height: 36, objectFit: 'cover', border: `1px solid ${COLORS.border}`, flexShrink: 0 }} />
-                                        ) : (
-                                          <PictureAsPdfIcon sx={{ fontSize: 28, color: COLORS.danger, flexShrink: 0 }} />
-                                        )}
-                                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                                          <Typography sx={{ fontFamily: FONT, fontSize: '0.75rem', fontWeight: 700, color: COLORS.medical, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {file.label || file.name || `Attachment ${i + 1}`}
-                                          </Typography>
-                                        </Box>
-                                        {file.type && (
-                                          <Chip
-                                            label={file.type.replace('-', ' ')}
-                                            size="small"
-                                            sx={{ height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0, bgcolor: tc.bg, color: tc.color, textTransform: 'uppercase', flexShrink: 0 }}
-                                          />
-                                        )}
-                                        {file.clientVisible && (
-                                          <Chip
-                                            label="Shared"
-                                            size="small"
-                                            sx={{ height: 16, fontSize: '0.5rem', fontWeight: 900, borderRadius: 0, bgcolor: '#E8F5E9', color: COLORS.success, flexShrink: 0 }}
-                                          />
-                                        )}
-                                      </Box>
-                                    );
-                                  })}
-                                </Stack>
-                              </Box>
-                            )}
-
                       {/* T4.243 Phase 3a: full amendments trail — new per-field diff entries,
                           legacy AmendmentDialog entries, and the frozen original baseline.
                           Self-hides when there are no amendments. */}
@@ -2597,7 +2532,7 @@ export default function PatientDashboard() {
                         );
                       })()}
 
-                      {/* T4.167: Compact action row — Print + Attachments + Rebook */}
+                      {/* T4.167: Compact action row — Print + Rebook */}
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1.5, pt: 1, borderTop: `1px solid ${COLORS.borderLight}` }}>
                         <Button
                           size="small"
@@ -2611,20 +2546,6 @@ export default function PatientDashboard() {
                         >
                           Print
                         </Button>
-                        {rec.attachments?.length > 0 && (
-                          <Button
-                            size="small"
-                            startIcon={<AttachFileIcon sx={{ fontSize: '14px !important' }} />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const attachEl = recordRefs.current[index]?.querySelector('[data-attachments]');
-                              if (attachEl) attachEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                            }}
-                            sx={{ fontFamily: FONT, fontWeight: 700, fontSize: '0.72rem', textTransform: 'none', color: COLORS.textSecondary }}
-                          >
-                            Attachments ({rec.attachments.length})
-                          </Button>
-                        )}
                         <Box sx={{ flex: 1 }} />
                         <Button
                           size="small"

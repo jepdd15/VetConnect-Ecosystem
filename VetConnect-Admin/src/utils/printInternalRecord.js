@@ -16,7 +16,6 @@ import {
   renderVaccineSection,
   renderLabResultsSection,
   renderDischargeSection,
-  renderAttachmentsSection,
   renderServicesSection,
 } from './printVisitSummary';
 
@@ -283,7 +282,6 @@ export function generateInternalRecordHTML({
   ${renderExamChecklistSection(rec.objectiveExam || rec.examChecklist)}
   ${renderAmendmentHistorySection(rec.amendments)}
   ${renderDischargeSection(rec.dischargeSummary)}
-  ${renderAttachmentsSection(rec.attachments)}
 
   <div class="signature-area">
     <div style="font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase; margin-bottom: 2px;">Signed by</div>

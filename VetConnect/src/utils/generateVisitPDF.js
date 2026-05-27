@@ -249,25 +249,6 @@ const renderDischargeSection = (discharge, soapPrognosis) => {
   `;
 };
 
-const renderAttachmentsSection = (attachments) => {
-  if (!attachments?.length) return '';
-  return `
-    <div class="section-anchor">Reference Attachments</div>
-    <div class="bullet-list">
-      ${attachments.map(att => {
-        const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.name);
-        const icon = isImg ? '📷' : '📄';
-        return `
-          <div class="bullet-item">
-            <span style="margin-right:8px;">${icon}</span>
-            <span style="font-weight:700;">${esc(att.name)}</span>
-            <span style="color:#888; font-size:11px;">(${esc(att.type || 'Attachment')})</span>
-          </div>
-        `;
-      }).join('')}
-    </div>
-  `;
-};
 
 // ─── Main Export ─────────────────────────────────────────────────────────────
 
@@ -423,7 +404,6 @@ export async function generateVisitPDF({ record, pet, owner, services, clinicSet
       })()}
       ${renderServicesSection(record, services)}
       ${renderDischargeSection(record.dischargeSummary, record.soap?.prognosis)}
-      ${renderAttachmentsSection(record.attachments)}
 
       <div class="footer-area">
         <div class="signature-block">

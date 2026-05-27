@@ -142,11 +142,6 @@ export function buildPetHistoryPrompt({ pet, owner, records, vaccinations }) {
         lines.push(`- Vaccines Given: ${vaxAdmins.map(va => va.vaccineName || 'Unknown').join(', ')}`);
       }
 
-      // Attachment count (for context — no content sent)
-      if (r.attachments?.length > 0) {
-        lines.push(`- Attachments: ${r.attachments.length} file(s)`);
-      }
-
       // Amendments
       if (r.amendments?.length > 0) {
         r.amendments.forEach(a => {

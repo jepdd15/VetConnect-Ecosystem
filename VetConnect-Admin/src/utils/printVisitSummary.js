@@ -304,29 +304,6 @@ export function renderDischargeSection(dischargeSummary, soapPrognosis) {
 }
 
 /**
- * Renders the attachments section for print output.
- */
-export function renderAttachmentsSection(attachments) {
-  if (!attachments?.length) return '';
-  const items = attachments.map(att => {
-    const icon = att.mimeType?.startsWith('image/') ? '📷' : '📄';
-    return `
-      <div style="padding: 8px 12px; background: #F9F9F9; border: 1px solid #EEE; margin-bottom: 8px; display: flex; align-items: center; gap: 12px;">
-        <span style="font-size: 20px;">${icon}</span>
-        <div>
-          <b style="font-size: 12px; display: block;">${esc(att.label || att.fileName || 'Attachment')}</b>
-          <span style="font-size: 10px; color: #888;">${esc(att.type || 'other')}</span>
-        </div>
-      </div>
-    `;
-  }).join('');
-  return `
-    <div class="section-anchor">Reference Attachments</div>
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">${items}</div>
-  `;
-}
-
-/**
  * Generates a complete HTML string for a printable clinical visit summary.
  *
  * The returned string is a self-contained HTML document — pass it directly
@@ -460,7 +437,6 @@ export function generateVisitSummaryHTML({ record, pet, owner, clinicName, clini
   ${renderServicesSection(rec)}
 
   ${renderDischargeSection(rec.dischargeSummary, soap.prognosis)}
-  ${renderAttachmentsSection(rec.attachments)}
 
   <div class="signature-area">
     <div style="font-size: 9px; font-weight: 900; color: #888; text-transform: uppercase; margin-bottom: 2px;">Signed by</div>

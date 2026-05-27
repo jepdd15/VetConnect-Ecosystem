@@ -69,7 +69,7 @@ import SoapGrid from './SoapGrid';
 import PhysicalExamChecklist from './PhysicalExamChecklist';
 import ClinicalAIPanel from './ClinicalAIPanel';
 import EMRDrawer from './EMRDrawer';
-import AmendmentDialog from './AmendmentDialog';
+// T4.243 Phase 2c: AmendmentDialog import removed — legacy creation path retired (✎ Revise replaces it).
 
 const Transition = React.forwardRef(function Transition(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />;
@@ -622,8 +622,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
   // Stores the last user content sent to the LLM so handleLlmRetry can re-send it.
   const lastLlmUserContentRef = useRef('');
 
-  // T3.118: Amendment dialog state — inline form extracted to shared AmendmentDialog
-  const [amendDialogOpen, setAmendDialogOpen] = useState(false);
+  // T4.243 Phase 2c: amendment-dialog state removed — creation retired in favor of ✎ Revise.
 
   // C1: Structured vaccine administration records — array for multi-vaccine-per-visit
   const [vaccineAdministrations, setVaccineAdministrations] = useState([{ ...EMPTY_VAX }]);
@@ -5517,15 +5516,10 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
                         <Box sx={{ p: 3, bgcolor: '#E8F5E9', borderRadius: 0, border: '2px dashed #2E7D32', textAlign: 'center' }}>
                             <Typography variant="h6" fontWeight={1000} color="#2E7D32">RECORD SEALED</Typography>
 
-                            {/* T3.118: Amendment via shared dialog */}
-                            <Button
-                                size="small"
-                                onClick={() => setAmendDialogOpen(true)}
-                                sx={{ mt: 1.5, fontWeight: 900, color: COLORS.success, borderColor: COLORS.success, borderRadius: 0, fontSize: '0.72rem' }}
-                                variant="outlined"
-                            >
-                                Add Amendment
-                            </Button>
+                            {/* T4.243 Phase 2c: legacy "Add Amendment" creation button removed —
+                                single correction path is now "✎ Revise" on the patient profile
+                                (PatientDashboard), which re-opens this workspace in revisionMode.
+                                Legacy amendment ENTRIES still display in the record trail. */}
 
                             {/* T3.124: Re-route button for reverted sealed records.
                                 Only shown when the appointment was reverted back to a
@@ -5558,15 +5552,7 @@ export default function ClinicalWorkspace({ open, onClose, patient, inventoryLis
         </Box>
       </Box>
 
-      <AmendmentDialog
-        open={amendDialogOpen}
-        onClose={() => setAmendDialogOpen(false)}
-        appointmentId={patient?.id}
-        onSuccess={() => {
-          setAmendDialogOpen(false);
-          showToast("Amendment saved.", "success");
-        }}
-      />
+      {/* T4.243 Phase 2c: AmendmentDialog mount removed — creation retired in favor of ✎ Revise. */}
 
       {/* 🧘 THE ZEN MODE FOCUS OVERLAY (CLINICAL CONCENTRATION) ── */}
       <Dialog 

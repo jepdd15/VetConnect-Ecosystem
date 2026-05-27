@@ -102,7 +102,7 @@ import { usePaymentActions } from './hooks/usePaymentActions';
 // ── Modals ──────────────────────────────────────────────────────
 import ReferralModal from './components/ReferralModal';
 import WalkInModal from '../Queue/WalkInModal';
-import AmendmentDialog from '../../components/AmendmentDialog';
+import ClinicalWorkspace from '../../components/ClinicalWorkspace';
 import SendNotificationDialog from '../../components/SendNotificationDialog';
 import PetHistoryAIDrawer from './components/PetHistoryAIDrawer';
 import { resolveDepartmentForRecord } from '../../utils/resolveDepartmentForRecord';
@@ -315,9 +315,15 @@ export default function PatientDashboard() {
   const [exemptionReason, setExemptionReason] = useState('');
   const [exemptionSaving, setExemptionSaving] = useState(false);
 
-  // T3.118: Amendment dialog — single instance shared across all sealed record cards
-  const [amendDialogOpen, setAmendDialogOpen] = useState(false);
-  const [amendTargetApptId, setAmendTargetApptId] = useState(null);
+  // T4.243 Phase 2c: Revise (full-workspace versioned amendment) — replaces the legacy
+  // AmendmentDialog creation path. Holds the signed record being corrected; drives the
+  // ClinicalWorkspace overlay (revisionMode) mounted below.
+  const [revisingRecord, setRevisingRecord] = useState(null);
+  // T4.243 Phase 2c: inventory + staff lists the Revision-Mode workspace needs (product search,
+  // staff attribution) — not previously loaded on this page.
+  const [inventoryList, setInventoryList] = useState([]);
+  const [inventoryCategories, setInventoryCategories] = useState([]);
+  const [vets, setVets] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // T4.13: Problem list — real-time active/resolved conditions for this pet.
@@ -428,7 +434,8 @@ export default function PatientDashboard() {
     }
   };
 
-  // T2.458: Load services + departments for WalkInModal
+  // T2.458 / T4.243: services + departments (WalkInModal) + inventory/categories + staff
+  // (the Revision-Mode ClinicalWorkspace needs inventory for product search and vets for attribution).
   useEffect(() => {
     const unsubSvc = onSnapshot(collection(db, 'services'), (snap) => {
       setServicesList(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => !s.isArchived));
@@ -436,8 +443,33 @@ export default function PatientDashboard() {
     const unsubDept = onSnapshot(collection(db, 'departments'), (snap) => {
       setDeptsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-    return () => { unsubSvc(); unsubDept(); };
+    const unsubInv = onSnapshot(collection(db, 'inventory'), (snap) => {
+      setInventoryList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    const unsubCat = onSnapshot(collection(db, 'inventory_categories'), (snap) => {
+      setInventoryCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    const unsubVets = onSnapshot(collection(db, 'users'), (snap) => {
+      setVets(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(u => !u.disabled && ['admin', 'staff', 'veterinarian', 'groomer'].includes(u.accessLevel)));
+    });
+    return () => { unsubSvc(); unsubDept(); unsubInv(); unsubCat(); unsubVets(); };
   }, []);
+
+  // T4.243 Phase 2c: enrich inventory with productClass/isMedicine (mirrors Queue.joinedInventory)
+  // so the Revision-Mode workspace's product search behaves identically to the live consult.
+  const joinedInventory = useMemo(() => {
+    return inventoryList
+      .filter(item => !item.isArchived)
+      .map(item => {
+        const catObj = inventoryCategories.find(c => c.name?.toLowerCase() === item.category?.toLowerCase());
+        return {
+          ...item,
+          isMedicine: catObj ? !!catObj.isMedicine : false,
+          productClass: catObj?.productClass || (catObj?.isMedicine ? 'medicine' : 'retail'),
+        };
+      });
+  }, [inventoryList, inventoryCategories]);
 
   // T4.96: LLM config fetch — one-shot, no listener needed
   useEffect(() => {
@@ -2068,13 +2100,12 @@ export default function PatientDashboard() {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 'auto' }}>
                       {/* Vitals strip removed for simplicity */}
                       {/* SEALED indicator removed */}
-                      {rec.legal?.isLocked === true && rec.appointmentId && (
+                      {rec.legal?.isLocked === true && (
                         <Button
                           size="small"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setAmendTargetApptId(rec.appointmentId);
-                            setAmendDialogOpen(true);
+                            setRevisingRecord(rec);
                           }}
                           sx={{
                             fontFamily: FONT, fontWeight: 900, fontSize: '0.62rem', textTransform: 'uppercase',
@@ -2083,7 +2114,7 @@ export default function PatientDashboard() {
                             '&:hover': { bgcolor: COLORS.warningSurface },
                           }}
                         >
-                          Amend
+                          ✎ Revise
                         </Button>
                       )}
                       <Box sx={{ color: COLORS.accent }}>{isExpanded ? <ExpandLessIcon sx={{ fontSize: 20 }}/> : <ExpandMoreIcon sx={{ fontSize: 20 }}/>}</Box>
@@ -3706,17 +3737,47 @@ export default function PatientDashboard() {
         prefillPet={pet}
       />
 
-      {/* T3.118: Shared amendment creation dialog */}
-      <AmendmentDialog
-        open={amendDialogOpen}
-        onClose={() => { setAmendDialogOpen(false); setAmendTargetApptId(null); }}
-        appointmentId={amendTargetApptId}
-        onSuccess={() => {
-          setRefreshKey(k => k + 1);
-          setAmendDialogOpen(false);
-          setAmendTargetApptId(null);
-        }}
-      />
+      {/* T4.243 Phase 2c: Revise — full-workspace versioned amendment for SIGNED records.
+          Replaces the legacy AmendmentDialog creation path. Mounts the same ClinicalWorkspace
+          used by the Queue, in revisionMode, hydrated (inverse-mapped) from the signed record.
+          The workspace expects an appointment-shaped `patient`; we build a SYNTHETIC one from the
+          record (record fields first, current pet/owner docs as fallback for identity). Every
+          patient.X read in the workspace render is optional-chained or lives in the sign-off
+          handlers (unreachable in revisionMode), so the synthetic shape below is sufficient.
+          On Save Correction the workspace writes the amendment to medical_records and calls
+          onClose; we bump refreshKey to re-fetch this page's records (one-shot getDocs). */}
+      {revisingRecord && (
+        <ClinicalWorkspace
+          open={!!revisingRecord}
+          onClose={() => { setRevisingRecord(null); setRefreshKey(k => k + 1); }}
+          revisionMode
+          revisionRecord={revisingRecord}
+          servicesList={servicesList}
+          departments={deptsList}
+          inventoryList={joinedInventory}
+          vetsList={vets}
+          patient={{
+            id: revisingRecord.appointmentId || revisingRecord.id,
+            petId: revisingRecord.petId,
+            petName: revisingRecord.petName || pet?.name,
+            petSpecies: revisingRecord.petSpecies || pet?.species,
+            petBreed: revisingRecord.petBreed || pet?.breed,
+            petGender: revisingRecord.petGender || pet?.gender,
+            petBirthdate: revisingRecord.petBirthdate || pet?.dob || null,
+            petWeight: revisingRecord.vitals?.weight ?? pet?.weight ?? '',
+            petAllergies: revisingRecord.petAllergies || pet?.petAllergies || pet?.allergies || '',
+            petIsNeutered: revisingRecord.petIsNeutered ?? pet?.isNeutered ?? false,
+            ownerId: revisingRecord.ownerId || owner?.id,
+            ownerName: revisingRecord.ownerName || owner?.fullName || 'Client',
+            ownerPhone: revisingRecord.ownerPhone || owner?.phone || '',
+            status: 'completed',
+            signedOffAt: revisingRecord.date,
+            services: [],
+            clinicalPulse: [],
+            createdAt: revisingRecord.date,
+          }}
+        />
+      )}
 
       {/* T4.92: Custom notification dialog — no appointmentId context, logs to console only */}
       <SendNotificationDialog

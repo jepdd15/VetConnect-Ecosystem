@@ -16,7 +16,7 @@
 //
 // Cron Trigger:
 //   0 23 * * * (23:00 UTC = 07:00 AM Asia/Manila daily)
-//   Runs: handleVaccineReminders + handleAppointmentReminders
+//   Runs: handleVaccineReminders + handleAppointmentReminders + handleBalanceReminders
 //   Each handler sends push + email (all types) + SMS (critical types only)
 //
 // Environment variables (set in Cloudflare Dashboard > Workers > Settings):
@@ -674,8 +674,14 @@ async function handleAppointmentReminders(env) {
 
   if (docs.length === 0) { console.log('[ApptReminders] Queue empty. Skipping.'); return; }
 
-  const nowManila = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-  const todayStr = nowManila.toISOString().slice(0, 10);
+  // Derive BOTH "today" and each appointment's date in Asia/Manila so the day-diff is
+  // symmetric. Previously today was Manila but the scheduled date used .toISOString() (UTC),
+  // shifting any slot before 08:00 Manila to the previous calendar day → reminders a day early.
+  // en-CA formats as "YYYY-MM-DD"; new Date("YYYY-MM-DD") is UTC-midnight, so both sides align.
+  const manilaYMD = (d) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(d);
+  const todayStr = manilaYMD(new Date());
   const todayMs = new Date(todayStr).getTime();
 
   let sent = 0, skipped = 0, failed = 0;
@@ -695,7 +701,7 @@ async function handleAppointmentReminders(env) {
 
     const schTs = f.scheduledDate?.timestampValue;
     if (!schTs) { skipped++; continue; }
-    const schDateStr = new Date(schTs).toISOString().slice(0, 10);
+    const schDateStr = manilaYMD(new Date(schTs));
     const schMs = new Date(schDateStr).getTime();
     const dayDiff = Math.round((schMs - todayMs) / 86400000);
 

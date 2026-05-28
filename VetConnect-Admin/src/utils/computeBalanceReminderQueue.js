@@ -86,23 +86,31 @@ async function writeOrDeleteQueueDoc(
     return 'deleted';
   }
 
+  // Contact fields (ownerName/email/phone/pushToken) are only written when the
+  // caller actually has a value. Appointments never store expoPushToken, so the
+  // POS-checkout path always passes a null token; under merge:true an unconditional
+  // write would CLOBBER a previously-resolved token (and email/phone) with empties,
+  // silently disabling the Worker's balance-reminder push channel for that owner.
+  // Omitting empty fields lets merge preserve whatever was last resolved
+  // (e.g. by the PatientDashboard settle path, which reads the full user doc).
+  const payload = {
+    ownerId,
+    totalBalance,
+    saleCount,
+    lastSaleDate: lastSaleDate || null,
+    updatedAt:   serverTimestamp(),
+  };
+  if (ownerName)  payload.ownerName  = ownerName;
+  if (ownerEmail) payload.ownerEmail = ownerEmail;
+  if (ownerPhone) payload.ownerPhone = ownerPhone;
+  if (pushToken)  payload.pushToken  = pushToken;
+
   await setDoc(
     queueRef,
-    {
-      ownerId,
-      ownerName:   ownerName  || '',
-      ownerEmail:  ownerEmail || '',
-      ownerPhone:  ownerPhone || '',
-      pushToken:   pushToken  || null,
-      totalBalance,
-      saleCount,
-      lastSaleDate: lastSaleDate || null,
-      updatedAt:   serverTimestamp(),
-    },
+    payload,
     { merge: true },
-    // merge:true intentionally preserves lastReminderSentAt and
-    // balanceReminderSnoozedUntil — these are only written by the
-    // Worker Cron and the PatientDashboard snooze handler respectively.
+    // merge:true also preserves lastReminderSentAt and balanceReminderSnoozedUntil —
+    // written only by the Worker Cron and the PatientDashboard snooze handler.
   );
 
   return 'updated';
@@ -200,10 +208,12 @@ export async function computeSingleOwnerBalanceReminder(ownerId, ownerData = {})
  * Runs fire-and-forget — returns a summary for display in Snackbar.
  *
  * Note: this function cannot resolve pushToken or email/phone for owners whose
- * data is not stored on the sale doc — those fields will be empty strings until
- * computeSingleOwnerBalanceReminder overwrites them after the next POS/settle
- * event, or the Worker reads them from the users collection as a fallback.
- * For most use cases the Cron already has those values from earlier writes.
+ * data is not stored on the sale doc. Those fields are simply omitted from the
+ * write (see writeOrDeleteQueueDoc) so merge:true preserves any contact values
+ * resolved by an earlier write. The Worker reads contact fields straight off the
+ * queue doc with NO users-collection fallback, so a queue doc that has never had
+ * its contact fields populated cannot be reached — run a settle/checkout (which
+ * passes full owner data) to seed them.
  *
  * @returns {Promise<{ updated: number, deleted: number, errors: number }>}
  */

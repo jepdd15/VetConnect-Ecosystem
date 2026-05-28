@@ -365,8 +365,14 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
         ...(finalTitle ? { customTitle: finalTitle } : {}),
         ...(finalBody  ? { customBody:  finalBody  } : {}),
       }),
-    }).then(() => {
-      addDoc(collection(db, 'notification_log'), { ...baseLogFields, channel: 'push' }).catch(() => {});
+    }).then((res) => {
+      // Only log a delivered notification — fetch resolves on HTTP 4xx/5xx too,
+      // so without the .ok guard the audit log would record failed sends as sent.
+      if (res.ok) {
+        addDoc(collection(db, 'notification_log'), { ...baseLogFields, channel: 'push' }).catch(() => {});
+      } else {
+        console.error(`[_dispatchPush] Push rejected by Worker: HTTP ${res.status}`);
+      }
     }).catch((err) => {
       console.error('[_dispatchPush] Push failed:', err?.message);
     });
@@ -389,8 +395,12 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
         subject: logTitle,
         html:    buildEmailHtml(logTitle, logBody),
       }),
-    }).then(() => {
-      addDoc(collection(db, 'notification_log'), { ...baseLogFields, channel: 'email' }).catch(() => {});
+    }).then((res) => {
+      if (res.ok) {
+        addDoc(collection(db, 'notification_log'), { ...baseLogFields, channel: 'email' }).catch(() => {});
+      } else {
+        console.error(`[_dispatchPush] Email rejected by Worker: HTTP ${res.status}`);
+      }
     }).catch((err) => {
       console.error('[_dispatchPush] Email failed:', err?.message);
     });
@@ -425,12 +435,16 @@ async function _dispatchPush({ ownerId, status, petName, vetName, ticketNumber, 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to: ownerPhone, message: smsMessage }),
-      }).then(() => {
-        addDoc(collection(db, 'notification_log'), {
-          ...baseLogFields,
-          body:    smsMessage, // SMS body is the short interpolated text, not the full push body
-          channel: 'sms',
-        }).catch(() => {});
+      }).then((res) => {
+        if (res.ok) {
+          addDoc(collection(db, 'notification_log'), {
+            ...baseLogFields,
+            body:    smsMessage, // SMS body is the short interpolated text, not the full push body
+            channel: 'sms',
+          }).catch(() => {});
+        } else {
+          console.error(`[_dispatchPush] SMS rejected by Worker: HTTP ${res.status}`);
+        }
       }).catch((err) => {
         console.error('[_dispatchPush] SMS failed:', err?.message);
       });

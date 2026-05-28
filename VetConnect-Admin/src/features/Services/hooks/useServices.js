@@ -16,6 +16,7 @@ const FIELD_LABELS = {
   isInpatient:  'Req. Confinement',
   isEmergency:  'Is Emergency',
   isScPwdEligible:   'SC/PWD Eligible',
+  requiresSOAP:      'Requires SOAP',
 };
 const MONEY_FIELDS = new Set(['price']);
 
@@ -132,6 +133,7 @@ export function useServices() {
       hasTieredPricing: Boolean(formData.hasTieredPricing),
       pricingTiers:    formData.pricingTiers || [],
       isScPwdEligible:   formData.isScPwdEligible !== false,
+      requiresSOAP:      formData.requiresSOAP !== false, // T4.248: default true (clinical)
     };
 
     if (editId) {

@@ -54,6 +54,9 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
     pricingTiers:     initTiers,
     // SC/PWD eligibility — default true for backward compat (all existing services remain discountable)
     isScPwdEligible: item?.isScPwdEligible !== false,
+    // T4.248: requires SOAP clinical documentation — default true (all existing services are clinical).
+    // Turn OFF for non-medical services (grooming, boarding) so the visit skips the SOAP workspace.
+    requiresSOAP: item?.requiresSOAP !== false,
   });
 
   // ── Tiered pricing helpers ───────────────────────────────────────────
@@ -480,6 +483,28 @@ export default function ServiceFormModal({ open, onClose, item, inventory, onSav
                 />
                 <Typography variant="caption" color="textSecondary" sx={{ ml: 4, mt: -0.5, display: 'block' }}>
                   When OFF, this service will NOT receive the 20% Senior Citizen / PWD discount at checkout.
+                  Turn off for non-medical services (grooming, boarding).
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.requiresSOAP !== false}
+                      onChange={(e) => setFormData({ ...formData, requiresSOAP: e.target.checked })}
+                      size="small"
+                      sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: COLORS.accent }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: COLORS.accent } }}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" fontWeight="bold" fontSize="0.8rem">
+                      Requires Clinical Documentation (SOAP)
+                    </Typography>
+                  }
+                  sx={{ mt: 1 }}
+                />
+                <Typography variant="caption" color="textSecondary" sx={{ ml: 4, mt: -0.5, display: 'block' }}>
+                  When OFF, this service skips the SOAP clinical workspace.
                   Turn off for non-medical services (grooming, boarding).
                 </Typography>
               </Grid>

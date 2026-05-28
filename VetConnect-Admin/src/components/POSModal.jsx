@@ -30,6 +30,7 @@ import { useUser } from '../context/UserContext';
 import { useClinicSettings } from '../hooks/useClinicSettings';
 import { resolveTieredPrice } from '../utils/resolveTieredPrice';
 import { makePulseEventId } from '../utils/pulseUtils';
+import { isNonClinicalVisit } from '../utils/visitClassification'; // T4.248
 import { sendPushNotification } from '../utils/sendPushNotification';
 import { printViaIframe, downloadHtmlAsFile, emailReceiptToOwner } from '../utils/receiptUtils';
 import { computeSingleOwnerBalanceReminder } from '../utils/computeBalanceReminderQueue';
@@ -974,9 +975,34 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
         const saleRef = doc(collection(db, "sales"));
         let salePayload;
         let appointmentUpdateFn; // deferred write — called in Phase 3
+        // T4.248: lightweight service record for non-clinical checkouts (assigned in the block below).
+        let serviceRecordRef = null;
+        let serviceRecordPayload = null;
 
         {
           const freshApptData = individualApptDoc.data();
+
+          // T4.248: a non-clinical (grooming/boarding) checkout auto-completes its services and
+          // writes a lightweight recordType:'service' record. One-record rule: skip if the visit
+          // was escalated + signed off (a clinical record already exists).
+          const nonClinical = !isRetailMode && isNonClinicalVisit(freshApptData.services || patient.services, servicesList);
+          const writeServiceRecord = nonClinical && !freshApptData.signedOffAt && !patient.signedOffAt;
+          if (writeServiceRecord) {
+            serviceRecordRef = doc(collection(db, 'medical_records'));
+            serviceRecordPayload = {
+              appointmentId: patient.id,
+              petId: patient.petId || 'WALK_IN_PET',
+              petName: patient.petName,
+              ownerId: patient.ownerId || null,
+              ownerName: patient.ownerName || 'Walk-In',
+              date: Timestamp.now(),
+              recordType: 'service', // NOT 'medical' — readers branch on this to skip SOAP rendering
+              services: (freshApptData.services || patient.services || []).map(s => ({ name: s.name, price: s.price || 0 })),
+              serviceNotes: patient.staffNotes || freshApptData.staffNotes || '',
+              vetName: profile?.fullName || 'Staff', // history surfaces read vetName for the "STAFF" line + header
+              handledBy: { uid: profile?.id || null, name: profile?.fullName || 'Staff' },
+            };
+          }
 
           salePayload = {
             saleType: 'clinical',
@@ -1023,7 +1049,7 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
           appointmentUpdateFn = (transaction) => {
             const apptRef = doc(db, "appointments", patient.id);
-            transaction.update(apptRef, {
+            const apptUpdate = {
               checkoutCorrelationId,
               status: 'completed',
               statusHistory: [...(freshApptData.statusHistory || []), freshApptData.status || 'billing'],
@@ -1037,7 +1063,18 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
                 staffName: profile?.fullName || 'POS Cashier',
                 note: `Checkout: ₱${financials.total} via ${paymentTenders.length > 1 ? 'split (' + paymentTenders.map(t => t.method).join('+') + ')' : primaryPaymentMethod}`,
               }),
-            });
+            };
+            // T4.248: auto-complete services on a PURE non-clinical checkout (Start/Done is optional
+            // live tracking). Escalated/signed-off visits keep whatever the workspace set.
+            if (writeServiceRecord) {
+              const svcNow = Timestamp.now();
+              apptUpdate.services = (freshApptData.services || []).map(s => ({
+                ...s,
+                serviceStatus: 'completed',
+                serviceCompletedAt: s.serviceCompletedAt || svcNow,
+              }));
+            }
+            transaction.update(apptRef, apptUpdate);
           };
         }
 
@@ -1080,6 +1117,12 @@ export default function POSModal({ open, onClose, patient, inventoryList, servic
 
         // 3e. Appointment status updates (completed + clinicalPulse).
         appointmentUpdateFn(transaction);
+
+        // 3f. T4.248: lightweight service record for non-clinical visits — atomic with the sale.
+        // Only written when the visit was NOT escalated/signed off (one-record rule).
+        if (serviceRecordRef && serviceRecordPayload) {
+          transaction.set(serviceRecordRef, serviceRecordPayload);
+        }
 
         // T2.101: outstandingBalance is now computed from sales (sum of balanceRemaining),
         // not a Firestore counter. This block intentionally removed.

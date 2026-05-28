@@ -149,6 +149,7 @@ export const PANEL = {
 /** Get record-type color for timeline badges */
 export const getRecordColor = (t) => (
   t === 'grooming' ? COLORS.grooming
+  : t === 'service' ? COLORS.grooming
   : t === 'surgery' ? COLORS.surgery
   : COLORS.medical
 );

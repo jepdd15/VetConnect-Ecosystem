@@ -17,6 +17,7 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import FlagIcon from '@mui/icons-material/Flag';
+import { isNonClinicalVisit } from '../../utils/visitClassification'; // T4.248
 
 const calculateAgeString = (dob, isAgeExact) => {
     if (!dob) return "AGE UNKNOWN";
@@ -433,8 +434,12 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       const services = [...(p.row.services || [])];
       if (services.length === 0) return <Chip label={p.row.status.toUpperCase()} color="primary" size="small" sx={{fontWeight:'900', height: 24}}/>;
 
+      // T4.248: a visit is non-clinical (skips SOAP) only when ALL services are requiresSOAP===false.
+      const nonClinical = isNonClinicalVisit(services, actions.servicesList);
+
       // T3.68: Pass richer data shape so the popover can display pet name and context.
-      const hoverPayload = { services, petName: p.row.petName, status: p.row.status, scheduledDate: p.row.scheduledDate, caseDay: p.row.caseDay };
+      // T4.248: include the appointment id so the popover can write per-service progress.
+      const hoverPayload = { services, petName: p.row.petName, status: p.row.status, scheduledDate: p.row.scheduledDate, caseDay: p.row.caseDay, id: p.row.id };
 
       return (
         <Box
@@ -467,6 +472,14 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
           {/* WEIGHT HIDDEN FROM SERVICES CELL PER FORENSIC CLEANUP */}
 
           <Stack spacing={0.8} sx={{ width: '100%' }}>
+            {/* T4.248: at-a-glance non-clinical (grooming/boarding) tag */}
+            {nonClinical && (
+              <Chip
+                label="NON-MEDICAL"
+                size="small"
+                sx={{ height: 16, fontSize: '0.5rem', fontWeight: 1000, borderRadius: 0, bgcolor: COLORS.kpiPurpleBg, color: COLORS.grooming, letterSpacing: 0.3, alignSelf: 'flex-start' }}
+              />
+            )}
             {services.slice(0, 2).map((svc, idx) => {
                 const dept = (departments || []).find(d => d.name === svc.department);
                 const barColor = dept ? dept.color : '#9E9E9E';
@@ -765,21 +778,37 @@ export const getQueueColumns = (tabValue, currentTime, actions, isToday, departm
       }
 
       if (params.row.status === 'arrived') {
+        // T4.248: all-non-clinical visits (grooming/boarding) skip the SOAP workspace —
+        // the primary action becomes CHECKOUT (→ POS). Escalation ("Add Clinical Findings")
+        // lives in the kebab menu. caseDay > 1 (carried-over) keeps the normal RESUME flow.
+        const arrivedNonClinical = params.row.caseDay <= 1 && isNonClinicalVisit(params.row.services, actions.servicesList);
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8, width: '100%', height: '100%' }}>
-            <Button 
-                variant="contained" 
-                size="small" 
+            {arrivedNonClinical ? (
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<PaidIcon sx={{ fontSize: '14px !important' }} />}
+                sx={{ ...btnStyle, bgcolor: '#2E7D32', '&:hover': { bgcolor: '#1B5E20' }, minWidth: 140 }}
+                onClick={() => actions.handleOpenPOS(params.row)}
+              >
+                CHECKOUT
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                size="small"
                 sx={{
-                  ...btnStyle, 
-                  bgcolor: params.row.caseDay > 1 ? '#E65100' : '#5D4037', 
-                  '&:hover': { bgcolor: params.row.caseDay > 1 ? '#BF360C' : '#3E2723' }, 
+                  ...btnStyle,
+                  bgcolor: params.row.caseDay > 1 ? '#E65100' : '#5D4037',
+                  '&:hover': { bgcolor: params.row.caseDay > 1 ? '#BF360C' : '#3E2723' },
                   minWidth: params.row.caseDay > 1 ? 160 : 140
-                }} 
+                }}
                 onClick={() => actions.handleStatusChange(params.row, 'in-consult')}
-            >
+              >
                 {params.row.caseDay > 1 ? 'RESUME' : 'START CONSULT'}
-            </Button>
+              </Button>
+            )}
             <IconButton size="small" onClick={(e) => actions.handleMenuClick(e, params.row)} sx={{ color: '#5D4037' }}><MoreVertIcon fontSize="small" /></IconButton>
           </Box>
         );

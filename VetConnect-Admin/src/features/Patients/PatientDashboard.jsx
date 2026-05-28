@@ -1388,7 +1388,9 @@ export default function PatientDashboard() {
       groups[groups.length - 1].records.push({
         index: i,
         dateLabel: d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—',
-        diagnosis: r.diagnoses?.[0]?.name || r.diagnosis || 'Clinical Visit',
+        diagnosis: r.recordType === 'service'
+          ? (r.services?.[0]?.name || 'Service Visit')
+          : (r.diagnoses?.[0]?.name || r.diagnosis || 'Clinical Visit'),
         recordType: r.recordType || 'medical',
       });
     });
@@ -2034,6 +2036,7 @@ export default function PatientDashboard() {
               </Box>
             ) : processedHistory.map((rec, index) => {
               const isExpanded = expandedRecords.has(index);
+              const isService = rec.recordType === 'service'; // T4.248: lightweight non-clinical record — no SOAP
               const rc = getRecordColor(rec.recordType);
               const dateStr = rec.date?.toDate ? rec.date.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
               const hasS = rec.soap?.subjective, hasO = hasExamData(rec.objectiveExam) || rec.soap?.objectiveNotes || rec.soap?.objective, hasT = rec.treatment;
@@ -2099,6 +2102,12 @@ export default function PatientDashboard() {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 'auto' }}>
                       {/* Vitals strip removed for simplicity */}
                       {/* SEALED indicator removed */}
+                      {/* T4.248: typed chip distinguishing non-clinical service records from clinical ones */}
+                      <Box sx={{ px: 1, py: 0.25, bgcolor: isService ? `${COLORS.grooming}12` : COLORS.chipBlueBg, border: `1px solid ${isService ? COLORS.grooming : COLORS.medical}`, flexShrink: 0 }}>
+                        <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900, color: isService ? COLORS.grooming : COLORS.medical, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          {isService ? 'SERVICE' : 'CLINICAL'}
+                        </Typography>
+                      </Box>
                       {/* T4.243 Phase 3a: AMENDED chip when the record carries any revision/legacy amendment */}
                       {(rec.isAmended || rec.amendments?.some(a => a.kind !== 'original')) && (
                         <AmendedChip />
@@ -2132,7 +2141,11 @@ export default function PatientDashboard() {
                       {/* T4.194: Typographic Memo Section (Services & Staff) */}
                       <Box sx={{ mb: 2.5 }}>
                         {(() => {
-                          const svcNames = [...(rec.serviceNames?.length > 0 ? rec.serviceNames : [rec.serviceType || rec.recordType || 'medical'])].sort();
+                          const svcNames = [...(
+                            rec.serviceNames?.length > 0 ? rec.serviceNames
+                            : rec.services?.length > 0 ? rec.services.map(s => s.name)
+                            : [rec.serviceType || rec.recordType || 'medical']
+                          )].sort();
                           const servicesText = svcNames.join(', ').toUpperCase();
                           
                           const attrs = (rec.serviceAttribution || []).filter(a => a.staffName);
@@ -2156,7 +2169,23 @@ export default function PatientDashboard() {
                         })()}
                       </Box>
 
+                      {/* T4.248: service records render clean service notes — no empty SOAP/vitals/diagnosis */}
+                      {isService && (
+                        <Box sx={{ mt: 1 }}>
+                          <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.grooming, mb: 1.5, textTransform: 'uppercase', letterSpacing: 2, borderBottom: `3px solid ${COLORS.grooming}`, width: 'fit-content', pb: 0.5 }}>SERVICE NOTES</Typography>
+                          <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', color: rec.serviceNotes ? COLORS.textPrimary : COLORS.textMuted, fontStyle: rec.serviceNotes ? 'normal' : 'italic', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                            {rec.serviceNotes || '— No service notes recorded —'}
+                          </Typography>
+                          {rec.services?.length > 0 && (
+                            <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.textSecondary, mt: 2 }}>
+                              SERVICE TOTAL: ₱{rec.services.reduce((s, x) => s + (Number(x.price) || 0), 0).toLocaleString()}
+                            </Typography>
+                          )}
+                        </Box>
+                      )}
+
                       {/* T4.194: Borderless Vitals Stream */}
+                      {!isService && (<>
                       {hasV && (
                         <Box sx={{ py: 1.5, borderTop: `1px dashed ${COLORS.border}`, borderBottom: `1px dashed ${COLORS.border}`, mb: 3, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                           {[
@@ -2531,6 +2560,8 @@ export default function PatientDashboard() {
                           </Box>
                         );
                       })()}
+
+                      </>)}
 
                       {/* T4.167: Compact action row — Print + Rebook */}
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1.5, pt: 1, borderTop: `1px solid ${COLORS.borderLight}` }}>

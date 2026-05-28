@@ -1680,9 +1680,12 @@ export default function PetHistoryScreen({ route, navigation }) {
   const renderRecord = ({ item, index }) => {
     const isExpanded = allExpanded || expandedIds.has(item.id);
     const visitDate = formatDisplayDate(item.date);
+    // T4.248: a non-clinical service visit (grooming/boarding) writes recordType:'service'.
+    // The discriminator is recordType only — the old serviceType keyword was brittle (missed
+    // "Puppy Cut") and would wrongly hide SOAP on an escalated grooming visit that became clinical.
     const isGrooming =
-      item.recordType === "grooming" ||
-      item.serviceType?.toLowerCase().includes("grooming");
+      item.recordType === "service" ||
+      item.recordType === "grooming";
 
     // T3.96: Compute whether this record opens a new year section.
     // Compares against filteredHistory[index - 1] so year dividers stay
@@ -1759,7 +1762,11 @@ export default function PetHistoryScreen({ route, navigation }) {
                 <View style={{ marginBottom: 4 }}>
                   {/* SERVICES ROW — Sorted A-Z for predictability */}
                   {(() => {
-                    const sortedServices = [...(item.serviceNames?.length > 0 ? item.serviceNames : [item.serviceType])].sort();
+                    const sortedServices = [...(
+                      item.serviceNames?.length > 0 ? item.serviceNames
+                      : item.services?.length > 0 ? item.services.map(s => s.name)
+                      : [item.serviceType]
+                    )].sort();
                     const servicesText = sortedServices.join(', ');
                     
                     const performerNames = item.serviceAttribution?.filter(a => a.staffName).map(a => a.staffName) || [];
@@ -2002,7 +2009,7 @@ export default function PetHistoryScreen({ route, navigation }) {
                 </Text>
                 <Text style={styles.planText}>
                   {isGrooming
-                    ? (item.treatment || "No grooming notes recorded.")
+                    ? (item.serviceNotes || item.treatment || "No grooming notes recorded.")
                     : (item.soap?.clientInstructions || "No care instructions provided for this visit.")}
                 </Text>
               </View>

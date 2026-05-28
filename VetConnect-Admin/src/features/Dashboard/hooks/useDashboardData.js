@@ -575,7 +575,8 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
 
     const unsub = onSnapshot(
       q,
-      (snap) => setMedicalRecords(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      // T4.248: exclude non-clinical service records (grooming/boarding) from clinical analytics
+      (snap) => setMedicalRecords(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.recordType !== 'service')),
       (err) => console.error('[useDashboardData] medicalRecords listener:', err.message),
     );
 
@@ -619,7 +620,7 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
             .filter(s => s.status !== 'refunded' && s.status !== 'voided'),
           expenses: expSnap.docs.map(d => ({ id: d.id, ...d.data() }))
             .filter(e => !e.deletedAt),
-          medicalRecords: recSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          medicalRecords: recSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.recordType !== 'service'), // T4.248: exclude service records from clinical analytics
         });
       } catch (err) {
         console.error('[useDashboardData] prevPeriod fetch:', err.message);
@@ -663,7 +664,7 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
           appointments: apptSnap.docs.map(d => ({ id: d.id, ...d.data() })),
           sales: salesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
             .filter(s => s.status !== 'refunded' && s.status !== 'voided'),
-          medicalRecords: recSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          medicalRecords: recSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.recordType !== 'service'), // T4.248: exclude service records from clinical analytics
         });
       } catch (err) {
         console.error('[useDashboardData] historical fetch:', err.message);
@@ -718,7 +719,7 @@ export function useDashboardData(period = 'today', refreshKey = 0, benchmarkEnab
             .filter(s => s.status !== 'refunded' && s.status !== 'voided'),
           expenses: expSnap.docs.map(d => ({ id: d.id, ...d.data() }))
             .filter(e => !e.deletedAt),
-          medicalRecords: recSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          medicalRecords: recSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.recordType !== 'service'), // T4.248: exclude service records from clinical analytics
         });
       } catch (err) {
         console.error('[useDashboardData] yearAgo fetch:', err.message);

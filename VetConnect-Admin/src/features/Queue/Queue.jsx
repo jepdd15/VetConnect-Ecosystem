@@ -15,6 +15,8 @@ import { collection, query, onSnapshot, doc, updateDoc, Timestamp, where, getDoc
 import { db } from '../../firebaseConfig'; 
 import { useQueueActions } from './useQueueActions';
 import { getQueueColumns } from './queueColumns';
+import { isNonClinicalVisit } from '../../utils/visitClassification'; // T4.248
+import { writeServiceProgress } from '../../utils/serviceProgressWriter'; // T4.248
 import { useUser } from '../../context/UserContext'; // THE SIGNATURE HOOK
 
 // 2. SHARED COMPONENTS
@@ -1768,6 +1770,7 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
     handleOpenDispenseVerify,
     openDispenseFlagDialog,
     openDispenseResolveDialog,
+    servicesList, // T4.248: catalog for non-clinical detection in the services cell
   }, isToday, departments, isTomorrowView, clinicSettings);
 
 
@@ -2433,9 +2436,18 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
           }
         }}
       >
+         {/* T4.248: escalation — put a non-clinical (grooming/boarding) arrived visit onto the
+             clinical track so the vet can document a finding via the workspace + sign-off. */}
+         {selectedRow?.status === 'arrived' && selectedRow.caseDay <= 1 && isNonClinicalVisit(selectedRow.services, servicesList) && (
+           <MenuItem onClick={() => { handleStatusChange(selectedRow, 'in-consult'); handleCloseMenu(); }}>
+             <ListItemIcon><LocalHospitalIcon fontSize="small" sx={{ color: COLORS.medical }} /></ListItemIcon>
+             <ListItemText primary="🩺 Add Clinical Findings" sx={{ color: COLORS.medical }} />
+           </MenuItem>
+         )}
+
          {['arrived', 'in-consult', 'dispensing', 'billing', 'on-hold', 'confined'].includes(selectedRow?.status) && (
            <>
-              <MenuItem onClick={() => { 
+              <MenuItem onClick={() => {
                 setTriageMode('hospitalize');
                 setTriageDate(new Date(Date.now() + 86400000).toISOString().split('T')[0]);
                 setOpenTriageShield(true); 
@@ -2800,7 +2812,19 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                   // T3.68: Backward-compat guard — old callers passed a plain array.
                   const rawData = hoverMetadata.data;
                   const svcData = Array.isArray(rawData) ? { services: rawData } : (rawData || {});
-                  const { services: svcList = [] } = svcData;
+                  // T4.248: read the LIVE row's services (onSnapshot-updated) so the per-service
+                  // Start/Done buttons reflect status immediately after a write; fall back to the
+                  // hover snapshot if the row isn't found.
+                  const apptId = svcData.id;
+                  const liveRow = apptId ? filteredRows.find(r => r.id === apptId) : null;
+                  const svcList = (liveRow?.services && liveRow.services.length > 0) ? liveRow.services : (svcData.services || []);
+                  // Show inline Start/Done only for all-non-clinical visits that are still in the queue
+                  // (not yet completed/cancelled) and not signed off (escalated → clinical flow takes over).
+                  const popoverNonClinical = isNonClinicalVisit(svcList, servicesList)
+                    && apptId
+                    && !liveRow?.signedOffAt
+                    && (liveRow?.caseDay ?? 1) <= 1 // carry-overs (caseDay>1) route back to the clinical RESUME flow, matching CHECKOUT/escalation gates
+                    && !['completed', 'cancelled', 'no-show'].includes(liveRow?.status);
 
                   // STATUS_ORDER is used for grouping when sort mode is 'status'.
                   const STATUS_ORDER = { 'completed': 0, 'in-progress': 1, 'pending': 2 };
@@ -2964,6 +2988,44 @@ const confirmResetDay = async (isSilent = false, targetDateMap = {}, targetModeM
                                     ...statusChipSx(svcStatus),
                                   }}
                                 />
+                                {/* T4.248: inline Start/Done for non-clinical (grooming/boarding) visits —
+                                    drives serviceProgress without opening the clinical workspace. */}
+                                {popoverNonClinical && svcStatus !== 'completed' && (
+                                  <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+                                    {svcStatus === 'pending' && (
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          try {
+                                            await writeServiceProgress({ appointmentId: apptId, services: svcList, svcId: svc.id, next: 'in-progress', profile });
+                                          } catch (err) {
+                                            showToast('Could not start service: ' + err.message, 'error');
+                                          }
+                                        }}
+                                        sx={{ borderRadius: 0, fontWeight: 900, fontSize: '0.55rem', py: 0, minWidth: 0, px: 1, color: COLORS.medical, borderColor: COLORS.medical }}
+                                      >
+                                        Start
+                                      </Button>
+                                    )}
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        try {
+                                          await writeServiceProgress({ appointmentId: apptId, services: svcList, svcId: svc.id, next: 'completed', profile });
+                                        } catch (err) {
+                                          showToast('Could not complete service: ' + err.message, 'error');
+                                        }
+                                      }}
+                                      sx={{ borderRadius: 0, fontWeight: 900, fontSize: '0.55rem', py: 0, minWidth: 0, px: 1, bgcolor: COLORS.success, boxShadow: 'none', '&:hover': { bgcolor: COLORS.success, boxShadow: 'none' } }}
+                                    >
+                                      ✓ Done
+                                    </Button>
+                                  </Box>
+                                )}
                               </Box>
                             </ListItem>
                           );

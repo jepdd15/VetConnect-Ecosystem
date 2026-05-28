@@ -122,6 +122,7 @@ const RecordCard = ({ record, appointmentId, onPrint, caseDayMap }) => {
   const rv = resolveVitals(record);
   const hasV = rv.weight || rv.temp || rv.hr || rv.rr != null || rv.crt != null || rv.bcs != null || rv.pain != null;
   const hasRx = (record.dispensedProducts || record.prescriptions)?.length > 0;
+  const isService = record.recordType === 'service'; // T4.248: lightweight non-clinical record — no SOAP
 
   return (
     <Box sx={{ mb: 1 }}>
@@ -146,6 +147,13 @@ const RecordCard = ({ record, appointmentId, onPrint, caseDayMap }) => {
         <Typography sx={{ fontFamily: FONT, fontSize: '0.8rem', fontWeight: 700, color: COLORS.textSecondary, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {record.vetName || 'ATTENDING CLINICIAN'}
         </Typography>
+
+        {/* T4.248: typed chip distinguishing non-clinical service records from clinical ones */}
+        <Box sx={{ px: 1, py: 0.25, bgcolor: isService ? `${COLORS.grooming}12` : COLORS.chipBlueBg, border: `1px solid ${isService ? COLORS.grooming : COLORS.medical}`, flexShrink: 0 }}>
+          <Typography sx={{ fontFamily: FONT, fontSize: '0.62rem', fontWeight: 900, color: isService ? COLORS.grooming : COLORS.medical, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            {isService ? 'SERVICE' : 'CLINICAL'}
+          </Typography>
+        </Box>
 
         {/* Case-day badge */}
         {caseDayMap[record.id] && (caseDayMap[record.id].caseDay > 1 || caseDayMap[record.id].totalDays > 1) && (
@@ -216,7 +224,11 @@ const RecordCard = ({ record, appointmentId, onPrint, caseDayMap }) => {
           {/* Services & Staff Memo */}
           <Box sx={{ mb: 2.5 }}>
             {(() => {
-              const svcNames = [...(record.serviceNames?.length > 0 ? record.serviceNames : [record.serviceType || record.recordType || 'medical'])].sort();
+              const svcNames = [...(
+                record.serviceNames?.length > 0 ? record.serviceNames
+                : record.services?.length > 0 ? record.services.map(s => s.name)
+                : [record.serviceType || record.recordType || 'medical']
+              )].sort();
               const servicesText = svcNames.join(', ').toUpperCase();
               
               const attrs = (record.serviceAttribution || []).filter(a => a.staffName);
@@ -240,7 +252,23 @@ const RecordCard = ({ record, appointmentId, onPrint, caseDayMap }) => {
             })()}
           </Box>
 
+          {/* T4.248: service records render clean service notes — no empty SOAP/vitals/diagnosis */}
+          {isService && (
+            <Box sx={{ mt: 1 }}>
+              <Typography sx={{ fontFamily: FONT, fontSize: '1.1rem', fontWeight: 900, color: COLORS.grooming, mb: 1.5, textTransform: 'uppercase', letterSpacing: 2, borderBottom: `3px solid ${COLORS.grooming}`, width: 'fit-content', pb: 0.5 }}>SERVICE NOTES</Typography>
+              <Typography sx={{ fontFamily: FONT, fontSize: '0.95rem', color: record.serviceNotes ? COLORS.textPrimary : COLORS.textMuted, fontStyle: record.serviceNotes ? 'normal' : 'italic', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                {record.serviceNotes || '— No service notes recorded —'}
+              </Typography>
+              {record.services?.length > 0 && (
+                <Typography sx={{ fontFamily: FONT, fontSize: '0.85rem', fontWeight: 800, color: COLORS.textSecondary, mt: 2 }}>
+                  SERVICE TOTAL: ₱{record.services.reduce((s, x) => s + (Number(x.price) || 0), 0).toLocaleString()}
+                </Typography>
+              )}
+            </Box>
+          )}
+
           {/* Vitals Stream */}
+          {!isService && (<>
           {hasV && (
             <Box sx={{ py: 1.5, borderTop: `1px dashed ${COLORS.border}`, borderBottom: `1px dashed ${COLORS.border}`, mb: 3, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
               {[
@@ -455,6 +483,8 @@ const RecordCard = ({ record, appointmentId, onPrint, caseDayMap }) => {
               </Stack>
             </Box>
           )}
+
+          </>)}
 
           {/* T4.243 Phase 3a: shared amendments trail — per-field diff entries, legacy
               entries, and the frozen original. Self-hides when there are no amendments. */}

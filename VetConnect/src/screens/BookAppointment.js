@@ -2182,7 +2182,11 @@ function SlotTile({ slot, isSelected, onPress }) {
     // and only sets selectedSlot when the slot is actually available).
     <TouchableOpacity
       accessibilityLabel={`${a11yRange}, ${
-        slot.status === 'OVERFLOW' ? 'unavailable, tap to see why'
+        // T4.UX (reviewer fix): use !isAvailable so FULL tiles also announce as
+        // unavailable. Previously this branched on status === 'OVERFLOW' which
+        // missed FULL slots and let them read as "3 of 3 booked" with no hint of
+        // being blocked. Both FULL and OVERFLOW are now tappable for details.
+        !isAvailable ? 'unavailable, tap to see why'
         : slot.capacity > 0 ? `${slot.booked} of ${slot.capacity} booked`
         : ''
       }${isSelected ? ', selected' : ''}`}

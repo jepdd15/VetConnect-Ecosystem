@@ -103,6 +103,10 @@ export default function BookAppointment({ navigation, route }) {
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  // T4.UX: "inspected" is what the detail card shows — distinct from "selected".
+  // Tapping an AVAILABLE tile sets BOTH (you've picked it AND you're reading about it).
+  // Tapping a DISABLED tile sets ONLY inspected (peek at why; selection stays put).
+  const [inspectedSlot, setInspectedSlot] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // Reschedule reason — required (Amendment 2). Empty string disables the Confirm button.
@@ -153,13 +157,32 @@ export default function BookAppointment({ navigation, route }) {
     loadingSlots,
     clinicSettings,
     departmentCapacity, // THE FIX: Essential for the final submitBooking calculation!
-  } = useBookingEngine(date, selectedServices, selectedPet);
+    visitDurationMin, // T4.UX: drives the YOUR VISIT chip + tile time range
+  } = useBookingEngine(date, selectedServices, selectedPet, rescheduleAppointmentId);
   
   // THE FIX: High performance searching for large pet lists!
   const filteredPets = useMemo(() => {
     if (!petSearch) return pets;
     return pets.filter(p => p.name.toLowerCase().includes(petSearch.toLowerCase()));
   }, [pets, petSearch]);
+
+  // T4.UX: STALE-SELECTION GUARD — if another client snipes the slot the user
+  // had picked (status flips from AVAILABLE to FULL/OVERFLOW via the real-time
+  // reservation listener), drop the selection so the detail card never lies and
+  // SELECT THIS TIME can't fire on a slot that would now reject the transaction.
+  useEffect(() => {
+    if (!selectedSlot) return;
+    const live = availableSlots.find(s => s.timeValue === selectedSlot);
+    if (!live || live.status !== 'AVAILABLE') {
+      setSelectedSlot(null);
+    }
+  }, [availableSlots, selectedSlot]);
+
+  // T4.UX: when selectedSlot is externally cleared (date change, reset paths),
+  // also clear the inspected slot so the detail card disappears with it.
+  useEffect(() => {
+    if (selectedSlot === null) setInspectedSlot(null);
+  }, [selectedSlot]);
 
   // Pre-select the pet when navigating via Re-Book. Idempotent: only fires when
   // the pet list has loaded and the user hasn't already made a selection.
@@ -762,6 +785,17 @@ export default function BookAppointment({ navigation, route }) {
     if (selectedDate) {
       setDate(selectedDate);
       setSelectedSlot(null);
+    }
+  };
+
+  // T4.UX: shared tap handler for SlotTile. Every tap moves the detail card to
+  // the tapped slot (inspectedSlot); only AVAILABLE slots become selectedSlot.
+  // This is the "grid holds SELECTED, card holds INSPECTED" pattern — peeking at
+  // a disabled tile to read its reason never clobbers a prior selection.
+  const handleTilePress = (slot) => {
+    setInspectedSlot(slot.timeValue);
+    if (slot.status === 'AVAILABLE') {
+      setSelectedSlot(slot.timeValue);
     }
   };
 
@@ -1473,7 +1507,11 @@ export default function BookAppointment({ navigation, route }) {
   // --- STEP 3 RENDER: DATE & TIME ---
   const renderStep3 = () => {
     // Exclude 'PAST' slots completely
-    const futureSlots = availableSlots.filter((s) => s.status !== "PAST");
+    // T4.UX: useBookingEngine never emits a "PAST" status — past slots are
+    // dropped inside the slot loop via `if (slotStart < now) continue`. So the
+    // earlier filter on s.status !== "PAST" was a no-op. availableSlots already
+    // contains only future-or-current slots.
+    const futureSlots = availableSlots;
 
     // T2.85: Identify if any required department has zero staff capacity
     const blockedDept = selectedServices.length > 0
@@ -1552,6 +1590,18 @@ export default function BookAppointment({ navigation, route }) {
             </View>
         </View>
 
+        {/* T4.UX: YOUR VISIT chip — sets context for what every tile's number refers to.
+            Hidden when no services picked (the prompt below covers that case). */}
+        {selectedServices.length > 0 && selectedPet && (
+          <View style={styles.visitChip}>
+            <Text style={styles.visitChipLabel}>YOUR VISIT</Text>
+            <Text style={styles.visitChipBody}>
+              {selectedServices.map(s => s.name).join(' + ')}
+              {visitDurationMin > 0 ? `  ·  ~${visitDurationMin} min total` : ''}
+            </Text>
+          </View>
+        )}
+
         {selectedServices.length === 0 || !selectedPet ? (
           <Text style={styles.subtlePrompt}>
             🕒 Select a service to see available time slots.
@@ -1573,113 +1623,55 @@ export default function BookAppointment({ navigation, route }) {
         ) : (
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 120 }}
+            // T4.UX: extra padding when the detail card is visible so the last row
+            // of tiles always scrolls clear of both the card and the repositioned FAB.
+            contentContainerStyle={{ paddingBottom: inspectedSlot ? 300 : 120 }}
           >
             {morningSlots.length > 0 && (
               <Text style={styles.timeOfDayHeader}>☀️ Morning</Text>
             )}
             <View style={styles.slotGrid}>
-              {morningSlots.map((slot, index) => {
-                const isSelected = selectedSlot === slot.timeValue;
-                const isAvailable = slot.status === "AVAILABLE";
-                return (
-                  <TouchableOpacity
-                    key={`m-${index}`}
-                    disabled={!isAvailable}
-                    style={[
-                      styles.slotBtn,
-                      isSelected
-                        ? styles.slotSelected
-                        : isAvailable
-                          ? styles.slotAvailable
-                          : styles.slotDisabled,
-                    ]}
-                    onPress={() => setSelectedSlot(slot.timeValue)}
-                  >
-                    <Text
-                      style={[
-                        styles.slotText,
-                        isSelected
-                          ? styles.slotTextSelected
-                          : isAvailable
-                            ? styles.slotTextAvailable
-                            : styles.slotTextDisabled,
-                      ]}
-                    >
-                      {slot.display}
-                    </Text>
-                    {slot.status === "OVERFLOW" ? (
-                      <Text style={[styles.slotSubText, { color: COLORS.muted }]}>
-                        UNAVAILABLE
-                      </Text>
-                    ) : slot.capacity > 0 ? (
-                      <Text
-                        style={[
-                          styles.slotSubText,
-                          { color: isSelected ? COLORS.white : isAvailable ? COLORS.textMuted : COLORS.danger },
-                        ]}
-                      >
-                        {slot.booked}/{slot.capacity} booked
-                      </Text>
-                    ) : null}
-                  </TouchableOpacity>
-                );
-              })}
+              {morningSlots.map((slot) => (
+                <SlotTile
+                  key={slot.timeValue}
+                  slot={slot}
+                  isSelected={selectedSlot === slot.timeValue}
+                  onPress={() => handleTilePress(slot)}
+                />
+              ))}
             </View>
 
             {afternoonSlots.length > 0 && (
               <Text style={styles.timeOfDayHeader}>🌙 Afternoon</Text>
             )}
             <View style={styles.slotGrid}>
-              {afternoonSlots.map((slot, index) => {
-                const isSelected = selectedSlot === slot.timeValue;
-                const isAvailable = slot.status === "AVAILABLE";
-                return (
-                  <TouchableOpacity
-                    key={`a-${index}`}
-                    disabled={!isAvailable}
-                    style={[
-                      styles.slotBtn,
-                      isSelected
-                        ? styles.slotSelected
-                        : isAvailable
-                          ? styles.slotAvailable
-                          : styles.slotDisabled,
-                    ]}
-                    onPress={() => setSelectedSlot(slot.timeValue)}
-                  >
-                    <Text
-                      style={[
-                        styles.slotText,
-                        isSelected
-                          ? styles.slotTextSelected
-                          : isAvailable
-                            ? styles.slotTextAvailable
-                            : styles.slotTextDisabled,
-                      ]}
-                    >
-                      {slot.display}
-                    </Text>
-                    {slot.status === "OVERFLOW" ? (
-                      <Text style={[styles.slotSubText, { color: COLORS.muted }]}>
-                        UNAVAILABLE
-                      </Text>
-                    ) : slot.capacity > 0 ? (
-                      <Text
-                        style={[
-                          styles.slotSubText,
-                          { color: isSelected ? COLORS.white : isAvailable ? COLORS.textMuted : COLORS.danger },
-                        ]}
-                      >
-                        {slot.booked}/{slot.capacity} booked
-                      </Text>
-                    ) : null}
-                  </TouchableOpacity>
-                );
-              })}
+              {afternoonSlots.map((slot) => (
+                <SlotTile
+                  key={slot.timeValue}
+                  slot={slot}
+                  isSelected={selectedSlot === slot.timeValue}
+                  onPress={() => handleTilePress(slot)}
+                />
+              ))}
             </View>
           </ScrollView>
         )}
+
+        {/* T4.UX: InspectedSlotDetail — appears when a tile (available OR disabled)
+            has been tapped. Shows the full breakdown the tile can't fit. */}
+        {inspectedSlot && (() => {
+          const live = availableSlots.find((s) => s.timeValue === inspectedSlot);
+          if (!live) return null;
+          return (
+            <InspectedSlotDetail
+              slot={live}
+              services={selectedServices}
+              durationMin={visitDurationMin}
+              clinicSettings={clinicSettings}
+              onDismiss={() => setInspectedSlot(null)}
+            />
+          );
+        })()}
       </View>
     );
   };
@@ -2141,7 +2133,9 @@ export default function BookAppointment({ navigation, route }) {
       {/* T4.206: AI Booking Advisor FAB -- feature-gated on workerUrl, hidden in reschedule mode */}
       {!!workerUrl && !rescheduleMode && !!selectedPet && (
         <TouchableOpacity
-          style={styles.bookingAiFab}
+          // T4.UX: shift up above the InspectedSlotDetail card when it's visible
+          // so the FAB never overlaps the per-department breakdown.
+          style={[styles.bookingAiFab, inspectedSlot ? { bottom: 300 } : null]}
           activeOpacity={0.85}
           onPress={() => setAiSheetVisible(true)}
         >
@@ -2164,6 +2158,166 @@ export default function BookAppointment({ navigation, route }) {
         onAuditLog={handleBookingAuditLog}
       />
     </SafeAreaView>
+  );
+}
+
+// T4.UX: extracted from the duplicated morning/afternoon render blocks so that any
+// future tile addition (e.g. time range, accessibility label, inspected highlight)
+// lives in ONE place.
+function SlotTile({ slot, isSelected, onPress }) {
+  const isAvailable = slot.status === "AVAILABLE";
+  // T4.UX: drop trailing " AM"/" PM" from the on-tile display because the section
+  // header (☀️ Morning / 🌙 Afternoon) already establishes the half of the day —
+  // repeating AM/PM on every tile is redundant and was crowding the range string
+  // ("1:00 PM – 1:30 PM"). The full versions are preserved for screen readers via
+  // accessibilityLabel below.
+  const stripAmPm = (s) => (s || '').replace(/\s*(AM|PM)$/i, '');
+  const startShort = stripAmPm(slot.display);
+  const endShort = slot.endDisplay ? stripAmPm(slot.endDisplay) : '';
+  const rangeText = endShort ? `${startShort} – ${endShort}` : startShort;
+  const a11yRange = slot.endDisplay ? `${slot.display} to ${slot.endDisplay}` : slot.display;
+  return (
+    // T4.UX: NOT disabled — even unavailable tiles are tappable so the user can
+    // peek at WHY (the parent's handler routes the tap to inspectedSlot only,
+    // and only sets selectedSlot when the slot is actually available).
+    <TouchableOpacity
+      accessibilityLabel={`${a11yRange}, ${
+        slot.status === 'OVERFLOW' ? 'unavailable, tap to see why'
+        : slot.capacity > 0 ? `${slot.booked} of ${slot.capacity} booked`
+        : ''
+      }${isSelected ? ', selected' : ''}`}
+      style={[
+        styles.slotBtn,
+        isSelected
+          ? styles.slotSelected
+          : isAvailable
+            ? styles.slotAvailable
+            : styles.slotDisabled,
+      ]}
+      onPress={onPress}
+    >
+      <Text
+        style={[
+          styles.slotText,
+          isSelected
+            ? styles.slotTextSelected
+            : isAvailable
+              ? styles.slotTextAvailable
+              : styles.slotTextDisabled,
+        ]}
+      >
+        {rangeText}
+      </Text>
+      {slot.status === "OVERFLOW" ? (
+        <Text style={[styles.slotSubText, { color: COLORS.muted }]}>
+          UNAVAILABLE
+        </Text>
+      ) : slot.capacity > 0 ? (
+        <Text
+          style={[
+            styles.slotSubText,
+            { color: isSelected ? COLORS.white : isAvailable ? COLORS.textMuted : COLORS.danger },
+          ]}
+        >
+          {slot.booked}/{slot.capacity} booked
+        </Text>
+      ) : null}
+    </TouchableOpacity>
+  );
+}
+
+// T4.UX: detail card for the currently INSPECTED slot — shown above the BACK /
+// SELECT THIS TIME footer. Renders the time range + duration, an honest reason
+// for unavailable slots (LUNCH / AFTER_HOURS / NO_STAFF / FULL), the per-department
+// room availability with text bars, and a recap of the selected services.
+function InspectedSlotDetail({ slot, services, durationMin, clinicSettings, onDismiss }) {
+  if (!slot) return null;
+  const isAvailable = slot.status === 'AVAILABLE';
+
+  const formatHour = (h) => {
+    if (h == null) return '';
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const dh = h > 12 ? h - 12 : h === 0 ? 12 : h;
+    return `${dh}:00 ${ampm}`;
+  };
+
+  let reasonText = null;
+  if (slot.reason === 'LUNCH' && clinicSettings) {
+    reasonText = `Lunch break (${formatHour(clinicSettings.lunchStart || 12)} – ${formatHour(clinicSettings.lunchEnd || 13)})`;
+  } else if (slot.reason === 'AFTER_HOURS') {
+    reasonText = 'After closing hours';
+  } else if (slot.reason === 'NO_STAFF') {
+    const dept = slot.deptLoad?.find((d) => d.capacity === 0);
+    reasonText = dept ? `No staff in ${dept.name} today` : 'No staff available for this department';
+  } else if (slot.reason === 'FULL') {
+    const dept = slot.deptLoad?.find((d) => d.capacity > 0 && d.booked >= d.capacity);
+    reasonText = dept ? `${dept.name} is fully booked at this time` : 'Fully booked at this time';
+  }
+
+  return (
+    <View style={styles.inspectCard}>
+      <View style={styles.inspectHeader}>
+        <Text style={styles.inspectTime} numberOfLines={1}>
+          {isAvailable ? '✓ ' : ''}{slot.display} – {slot.endDisplay}
+          {durationMin > 0 ? `  ·  ${durationMin} min` : ''}
+        </Text>
+        <TouchableOpacity
+          onPress={onDismiss}
+          style={styles.inspectDismiss}
+          accessibilityLabel="Dismiss details"
+        >
+          <Text style={styles.inspectDismissText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+
+      {reasonText && <Text style={styles.inspectReason}>{reasonText}</Text>}
+
+      {slot.deptLoad?.length > 0 && (
+        <View style={styles.inspectDeptList}>
+          <Text style={styles.inspectSectionLabel}>ROOM AVAILABILITY</Text>
+          {slot.deptLoad.map((d, i) => {
+            const noStaff = d.capacity === 0;
+            const isFull = !noStaff && d.booked >= d.capacity;
+            const filled = '▮'.repeat(d.booked);
+            const empty = '▯'.repeat(Math.max(0, d.capacity - d.booked));
+            return (
+              <View key={i} style={styles.inspectDeptRow}>
+                <Text style={styles.inspectDeptName} numberOfLines={1}>{d.name}</Text>
+                <Text
+                  style={[
+                    styles.inspectDeptBar,
+                    { color: noStaff ? COLORS.textMuted : isFull ? COLORS.danger : COLORS.brand },
+                  ]}
+                >
+                  {noStaff ? '— no staff' : `${filled}${empty}`}
+                </Text>
+                {!noStaff && (
+                  <Text
+                    style={[
+                      styles.inspectDeptCount,
+                      { color: isFull ? COLORS.danger : COLORS.textMuted },
+                    ]}
+                  >
+                    {d.booked}/{d.capacity}
+                  </Text>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {services?.length > 0 && (
+        <View style={styles.inspectVisitBlock}>
+          <Text style={styles.inspectSectionLabel}>YOUR VISIT</Text>
+          {services.map((s, i) => (
+            <Text key={i} style={styles.inspectVisitItem} numberOfLines={1}>
+              • {s.name} ({s.duration || 30} min · {s.department || s.category || 'General'})
+            </Text>
+          ))}
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -2359,6 +2513,118 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlignVertical: "top",
     minHeight: 120,
+  },
+
+  // T4.UX: YOUR VISIT context chip — anchored above the slot grid
+  visitChip: {
+    backgroundColor: COLORS.cream,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+
+  // T4.UX: InspectedSlotDetail — sits above the BACK / SELECT footer.
+  // Shows the time range, an honest reason for unavailable slots, the per-dept
+  // room availability with text bars, and a recap of the selected services.
+  inspectCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    borderRadius: 0,
+    padding: 12,
+    marginTop: 8,
+  },
+  inspectHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  inspectTime: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.brand,
+  },
+  inspectDismiss: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 6,
+  },
+  inspectDismissText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+  },
+  inspectReason: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.danger,
+    fontStyle: 'italic',
+    marginBottom: 6,
+  },
+  inspectDeptList: {
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  inspectSectionLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  inspectDeptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  inspectDeptName: {
+    flexShrink: 0,
+    minWidth: 100,
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  inspectDeptBar: {
+    flex: 1,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 2,
+    paddingHorizontal: 8,
+  },
+  inspectDeptCount: {
+    flexShrink: 0,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  inspectVisitBlock: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  inspectVisitItem: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    paddingVertical: 1,
+  },
+  visitChipLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.accent,
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  visitChipBody: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.brand,
   },
 
   warningBox: {

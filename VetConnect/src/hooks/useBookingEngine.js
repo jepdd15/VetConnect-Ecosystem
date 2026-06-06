@@ -7,16 +7,33 @@ import {
   Timestamp,
   where,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { auth, db } from "../../firebaseConfig";
 import { getLocalDateStr } from '../utils/helpers';
 
-export function useBookingEngine(date, selectedServices = [], selectedPet = null) {
+export function useBookingEngine(date, selectedServices = [], selectedPet = null, rescheduleAppointmentId = null) {
   const [pets, setPets] = useState([]);
   const [services, setServices] = useState([]);
 
   // THE FIX: We renamed 'roleCounts' to 'departmentCapacity' because we now use Skill-Based Routing!
   const [departmentCapacity, setDepartmentCapacity] = useState({});
+
+  // T4.UX: visit duration in minutes — the longest department's total (services run
+  // in parallel across departments). Exposed so the booking UI can render the visit
+  // chip (~30 min total) and the per-tile time range (1:00 – 1:30 PM) without
+  // re-implementing the same math. Mirrors the parallelDuration computed inside the
+  // slot effect; kept here as a small useMemo so the return value updates on service
+  // changes even before the slot effect's debounce fires.
+  const visitDurationMin = useMemo(() => {
+    const groups = {};
+    selectedServices.forEach((s) => {
+      const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
+      const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
+      const dept = (s.department || s.category || "General").toLowerCase();
+      groups[dept] = (groups[dept] || 0) + (dur + buff);
+    });
+    return Object.keys(groups).length > 0 ? Math.max(...Object.values(groups)) : 0;
+  }, [selectedServices]);
 
   const [clinicSettings, setClinicSettings] = useState({
     openHour: 8,
@@ -258,11 +275,17 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
       try {
         // Compute dept groups for the single pet
         const deptGroups = {};
+        // T4.UX: preserve the admin's ORIGINAL-case department name keyed by the
+        // lowercased lookup key, so the detail card can render exactly what was
+        // typed into the services catalog (no string-matching to a display label).
+        const deptDisplayNames = {};
         selectedServices.forEach(s => {
           const dur = parseInt(String(s.duration).replace(/[^0-9]/g, "")) || 30;
           const buff = parseInt(String(s.bufferTime).replace(/[^0-9]/g, "")) || 0;
-          const dept = (s.department || s.category || "General").toLowerCase();
+          const originalDept = s.department || s.category || "General";
+          const dept = originalDept.toLowerCase();
           deptGroups[dept] = (deptGroups[dept] || 0) + (dur + buff);
+          if (!deptDisplayNames[dept]) deptDisplayNames[dept] = originalDept;
         });
         const parallelDuration = Object.keys(deptGroups).length > 0
           ? Math.max(...Object.values(deptGroups))
@@ -271,6 +294,12 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
         // Build booked ranges categorized by department from cached day appointments
         const bookedRangesByDept = {};
         dayAppointments.forEach(data => {
+          // T4.UX: during a reschedule, skip the appointment being moved. Without
+          // this, the grid would count the client's own existing booking against
+          // capacity and could falsely block them from reusing the same slot in a
+          // capacity-1 department — disagreeing with the submit-time JIT check
+          // (which already excludes own ID via runTransaction).
+          if (rescheduleAppointmentId && data.id === rescheduleAppointmentId) return;
           if (!data.scheduledDate?.toDate) return;
           const s = data.scheduledDate.toDate();
           const dur = data.serviceDuration || 30;
@@ -321,11 +350,21 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
             const slotStart = new Date(date);
             slotStart.setHours(h, m, 0, 0);
             let slotStatus = "AVAILABLE";
+            // T4.UX: refined reason for unavailable states — null for AVAILABLE,
+            // one of "AFTER_HOURS" / "LUNCH" / "NO_STAFF" / "FULL" otherwise.
+            // The legacy `status` field (AVAILABLE / OVERFLOW / FULL) stays unchanged
+            // so the existing render branches keep working.
+            let reason = null;
             // Capacity counts for the bottleneck (most-utilized) department this booking
             // touches — surfaced on the tile as "X/Y booked". Stays 0 when no capacity check
             // ran (e.g. the slot failed an hours/lunch check first); such tiles show no count.
             let bookedCount = 0;
             let totalCapacity = 0;
+            // T4.UX: per-department load for the tap-to-expand detail card. Always
+            // carries the FULL picture (every department the booking touches) — the
+            // capacity walk runs without early breaks so deptLoad is complete even
+            // when one department is FULL or has no staff.
+            const deptLoad = [];
 
             if (slotStart < now) {
               continue;
@@ -337,7 +376,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
 
               // FAILURE 1: BOUNDARIES (service would run past closing)
               if (slotStart.getHours() >= closeH || petEndTime > new Date(date).setHours(closeH, 0, 0, 0)) {
-                canFitAll = false; conflictType = "OVERFLOW";
+                canFitAll = false; conflictType = "OVERFLOW"; reason = "AFTER_HOURS";
               }
 
               // FAILURE 2: LUNCH
@@ -346,13 +385,18 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
                 (petEndTime > new Date(date).setHours(lStart, 0, 0, 0) &&
                  slotStart < new Date(date).setHours(lEnd, 0, 0, 0))
               )) {
-                canFitAll = false; conflictType = "OVERFLOW";
+                canFitAll = false; conflictType = "OVERFLOW"; reason = "LUNCH";
               }
 
-              // FAILURE 3: DEPARTMENT CAPACITY — also captures the most-constrained
-              // department's booked/capacity for the live "X/Y booked" tile count.
+              // FAILURE 3: DEPARTMENT CAPACITY — surfaces the most-constrained
+              // department's booked/capacity for the tile's single "X/Y booked" line,
+              // AND accumulates the full per-department load list for the detail card.
+              // Walks every department unconditionally (no early break) so deptLoad
+              // stays complete even when one department is FULL or has no staff.
               if (canFitAll) {
                 let bottleneckRemaining = Infinity;
+                let anyNoStaff = false;
+                let anyFull = false;
                 for (const [deptName, deptDuration] of Object.entries(deptGroups)) {
                   const svcStart = slotStart;
                   const svcEnd = new Date(slotStart.getTime() + deptDuration * 60000);
@@ -362,24 +406,38 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
                     if (svcStart < r.end && svcEnd > r.start) overlaps++;
                   }
                   const capacity = departmentCapacity[deptName] || 0;
+                  const safeBooked = Math.min(overlaps, capacity); // never display X > Y
 
-                  // No staff assigned to this department — structurally unbookable. A
-                  // "0/0 booked" count is meaningless, so render it as Unavailable.
+                  // Record this department using the admin's ORIGINAL-case name from
+                  // the services catalog (never a string-matched substitute label).
+                  deptLoad.push({
+                    name: deptDisplayNames[deptName] || deptName,
+                    booked: safeBooked,
+                    capacity,
+                  });
+
                   if (capacity === 0) {
-                    canFitAll = false; conflictType = "OVERFLOW"; break;
+                    anyNoStaff = true;
+                    continue; // structurally unbookable, but keep walking for the detail card
+                  }
+                  if (overlaps >= capacity) {
+                    anyFull = true;
                   }
 
-                  // Surface the tightest department (fewest spots remaining).
+                  // Surface the tightest department (fewest spots remaining) for the
+                  // tile's single bottleneck line.
                   const remaining = capacity - overlaps;
                   if (remaining < bottleneckRemaining) {
                     bottleneckRemaining = remaining;
-                    bookedCount = Math.min(overlaps, capacity); // never display X > Y
+                    bookedCount = safeBooked;
                     totalCapacity = capacity;
                   }
+                }
 
-                  if (overlaps >= capacity) {
-                    canFitAll = false; conflictType = "FULL"; break;
-                  }
+                if (anyNoStaff) {
+                  canFitAll = false; conflictType = "OVERFLOW"; reason = "NO_STAFF";
+                } else if (anyFull) {
+                  canFitAll = false; conflictType = "FULL"; reason = "FULL";
                 }
               }
 
@@ -389,9 +447,15 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
             slots.push({
               timeValue: `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`,
               display: slotStart.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              // T4.UX: end-of-visit time for the tile's "1:00 – 1:30 PM" range. Derived
+              // from parallelDuration (the longest department's duration; depts run in parallel).
+              endDisplay: new Date(slotStart.getTime() + parallelDuration * 60000)
+                .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
               status: slotStatus,
+              reason, // null for AVAILABLE
               booked: bookedCount,
               capacity: totalCapacity,
+              deptLoad, // [{ name, booked, capacity }, ...] in iteration order
             });
           }
         }
@@ -404,7 +468,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [date, dayAppointments, dayReservations, selectedServices, selectedPet, clinicSettings, departmentCapacity]);
+  }, [date, dayAppointments, dayReservations, selectedServices, selectedPet, clinicSettings, departmentCapacity, rescheduleAppointmentId]);
 
   return {
     pets,
@@ -416,6 +480,7 @@ export function useBookingEngine(date, selectedServices = [], selectedPet = null
     loadingSlots,
     clinicSettings,
     departmentCapacity,
+    visitDurationMin, // T4.UX: exposed for the visit chip + tile time range
   };
 }
 

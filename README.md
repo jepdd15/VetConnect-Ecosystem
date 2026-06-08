@@ -20,7 +20,7 @@ A dual-surface veterinary clinic management system consisting of a web-based adm
 
 **Admin — Live Visit Queue**
 
-![Admin queue board showing patients across the visit lifecycle, with status filters and per-visit actions](docs/screenshots/queue-board.png)
+![Admin queue board showing patients across the visit lifecycle, with status filters and per-visit actions](docs/screenshots/admin-queue.png)
 
 **Mobile — Appointment Booking**
 

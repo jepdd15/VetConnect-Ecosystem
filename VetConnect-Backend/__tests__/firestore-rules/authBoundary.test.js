@@ -25,7 +25,7 @@ const AUTH_READ_COLLECTIONS = [
 const AUTH_CREATE_COLLECTIONS = [
   "appointments", "pets", "medical_records", "sales", "payments",
   "queue", "slot_reservations", "notification_log", "auth_logs",
-  "inventory_logs", "service_logs",
+  "inventory_logs", "service_logs", "staff_logs", "settings_logs", "llm_audit_logs",
 ];
 
 describe("auth boundary — unauthenticated client is denied", () => {

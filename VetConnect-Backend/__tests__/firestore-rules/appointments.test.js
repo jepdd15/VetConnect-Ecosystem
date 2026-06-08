@@ -5,7 +5,7 @@
 // append-only clinicalPulse array.
 import { describe, it, beforeAll, afterAll, afterEach } from "vitest";
 import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import { doc, setDoc, updateDoc, deleteField } from "firebase/firestore";
+import { doc, setDoc, updateDoc, deleteDoc, deleteField } from "firebase/firestore";
 import { getEnv, clearData, cleanupEnv, authedDb, seed } from "./helpers.js";
 
 beforeAll(getEnv);
@@ -69,6 +69,20 @@ describe("terminal status requires a non-empty auditReason", () => {
     await seedAppt();
     const db = await authedDb();
     await assertSucceeds(updateDoc(doc(db, "appointments", "a1"), { status: "no-show", auditReason: "did not arrive" }));
+  });
+
+  // The no-show STAFF gate (`status != 'no-show' || was-no-show || isStaff()`) cannot be
+  // verified under Spark: isStaff() === isAuth(), so there is no "authenticated non-staff"
+  // principal to deny. Re-enable after a Blaze + custom-claims migration, asserting a
+  // pet-owner principal is denied while staff is allowed.
+  it.skip("no-show is rejected for a non-staff user (UNTESTABLE under Spark — Blaze migration)", () => {});
+});
+
+describe("appointments cannot be deleted (no delete rule → deny-all fallback)", () => {
+  it("deleting an appointment is denied even for authenticated staff", async () => {
+    await seedAppt();
+    const db = await authedDb();
+    await assertFails(deleteDoc(doc(db, "appointments", "a1")));
   });
 });
 

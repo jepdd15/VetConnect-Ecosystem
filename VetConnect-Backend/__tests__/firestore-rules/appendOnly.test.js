@@ -7,7 +7,7 @@
 import { describe, it, beforeAll, afterAll, afterEach } from "vitest";
 import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
 import { doc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
-import { getEnv, clearData, cleanupEnv, authedDb, seed } from "./helpers.js";
+import { getEnv, clearData, cleanupEnv, authedDb, seed, OWNER_UID, STAFF_UID } from "./helpers.js";
 
 beforeAll(getEnv);
 afterEach(clearData);
@@ -79,5 +79,31 @@ describe("pets/{petId}/problems — structured problem list is delete-blocked fo
     });
     const db = await authedDb();
     await assertFails(deleteDoc(doc(db, "pets", "pet1", "problems", "p1")));
+  });
+});
+
+describe("users/{uid}/consent_records — immutable consent audit trail (RA 10173)", () => {
+  const recPath = (uid) => ["users", uid, "consent_records", "cr1"];
+
+  it("the owner can create their own consent record", async () => {
+    const db = await authedDb(OWNER_UID);
+    await assertSucceeds(setDoc(doc(db, ...recPath(OWNER_UID)), { type: "dpa", version: 1 }));
+  });
+
+  it("staff can create a consent record on a client's behalf", async () => {
+    const db = await authedDb(STAFF_UID);
+    await assertSucceeds(setDoc(doc(db, ...recPath(OWNER_UID)), { type: "waiver", version: 1 }));
+  });
+
+  it("update is denied — consent records are immutable once written", async () => {
+    await seed(async (db) => setDoc(doc(db, ...recPath(OWNER_UID)), { type: "dpa", version: 1 }));
+    const db = await authedDb(STAFF_UID);
+    await assertFails(updateDoc(doc(db, ...recPath(OWNER_UID)), { version: 2 }));
+  });
+
+  it("delete is denied — consent records are immutable once written", async () => {
+    await seed(async (db) => setDoc(doc(db, ...recPath(OWNER_UID)), { type: "dpa", version: 1 }));
+    const db = await authedDb(STAFF_UID);
+    await assertFails(deleteDoc(doc(db, ...recPath(OWNER_UID))));
   });
 });

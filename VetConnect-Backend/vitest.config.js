@@ -9,8 +9,13 @@ export default defineConfig({
     include: ["__tests__/firestore-rules/**/*.test.js"],
     testTimeout: 15000,
     hookTimeout: 30000,
-    // Rules tests share one emulator + one project namespace; run serially
-    // so concurrent clearFirestore() calls can't wipe another test's seed.
+    // Rules tests share one emulator + one project namespace, so they MUST run
+    // serially — concurrent clearFirestore() calls would wipe another test's seed.
+    // A single fork (rather than the default multi-worker forks pool) also avoids
+    // an intermittent "Vitest failed to find the runner" worker-spin-up flake seen
+    // on Windows with fileParallelism:false.
+    pool: "forks",
+    poolOptions: { forks: { singleFork: true } },
     fileParallelism: false,
   },
 });

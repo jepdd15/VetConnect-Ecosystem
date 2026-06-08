@@ -1,0 +1,16 @@
+{
+  "name": "vetconnect-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VetConnect Firebase backend — Firestore rules, indexes, and the security-rules test suite. (Cloud Functions live in ./functions; the deployed backend is the Cloudflare Worker in ./cloudflare-worker.)",
+  "type": "module",
+  "scripts": {
+    "test:rules": "firebase emulators:exec --only firestore --project demo-vetconnect \"vitest run\"",
+    "test:rules:watch": "firebase emulators:exec --only firestore --project demo-vetconnect \"vitest\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase": "^12.9.0",
+    "vitest": "^4.1.8"
+  }
+}
